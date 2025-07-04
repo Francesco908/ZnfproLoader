@@ -1,298 +1,152 @@
--- ZnfPro Universal Gaming Utility - Complete Fix
--- Added: Persistent lock onto target while firing; fallback to nearest when moving out
+-- CONFIG INIZIALE (già ottimizzati, non cambiare se non sai)
+local BEST_FOV_SIZE = 340 -- Miglior valore per FOV
+local BEST_SMOOTHNESS = 0.62 -- Miglior valore per smoothing
 
-local success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-end)
-if not success then warn("Failed to load Rayfield UI Library"); return end
+-- Variabili globali
+local AimEnabled = true
+local SilentAimEnabled = false
+local ESPEnabled = true
+local FOVCircleEnabled = true
 
--- Create Window
-local Window = Rayfield:CreateWindow({
-    Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
-    LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
-    LoadingSubtitle = "Universal script for all games",
-    KeySystem = true,
-    KeySettings = {
-        Title = "Authentication Required",
-        Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
-        Note = "Get your key at: loaderkey.crabdance.com",
-        FileName = "ZnfproLoaderKey",
-        SaveKey = true,
-        GrabKeyFromSite = false,
-        Key = {"FREEKEYFORALL"}
-    }
-})
+local FOVSize = BEST_FOV_SIZE
+local AimSmoothness = BEST_SMOOTHNESS
 
--- Tabs
-local MainTab     = Window:CreateTab("Main",     4483362458)
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
-local BypassTab   = Window:CreateTab("Bypass",   6031091006)
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
--- Services
-local Players            = game:GetService("Players")
-local LocalPlayer        = Players.LocalPlayer
-local RunService         = game:GetService("RunService")
-local UserInputService   = game:GetService("UserInputService")
-local camera             = workspace.CurrentCamera
-
--- Variables
-local ESPColor, FOVColor = Color3.fromRGB(255,0,0), Color3.fromRGB(255,255,255)
-local ESPEnabled, AimEnabled, SilentAimEnabled, TeamCheckEnabled, FOVCircleEnabled, NoRecoilEnabled = false, false, false, false, false, false
-local FOVSize, AimSmoothness = 150, 1
-local ESPConn, AimConn
-local MarkedPlayers = {}
-local currentTarget = nil
-
--- FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.6
+-- GUI semplice (puoi personalizzare)
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+local FOVCircle = Instance.new("Circle", ScreenGui)
+FOVCircle.Radius = FOVSize
+FOVCircle.Color = Color3.new(1, 0, 0)
 FOVCircle.Thickness = 2
-FOVCircle.NumSides = 64
-FOVCircle.ZIndex = 2
+FOVCircle.Transparency = 0.5
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+FOVCircle.Visible = FOVCircleEnabled
 
--- Helpers
-local function getCharacterParts(c)
-    return c and {head = c:FindFirstChild("Head"), humanoid = c:FindFirstChild("Humanoid")} or {}
+-- Bypass base (esempio: nasconde il tuo movimento di mouse)
+local function BypassAntiCheat()
+    -- Qui puoi mettere funzioni per bypass semplici o anti rilevamento
+    -- Per esempio, filtrare movimenti troppo bruschi, randomizzare leggermente
+    -- oppure bloccare eventi sospetti (dipende dal gioco)
 end
 
-local function isValidTarget(p)
-    if p == LocalPlayer or not p.Character then return false end
-    local parts = getCharacterParts(p.Character)
-    if not parts.head or not parts.humanoid or parts.humanoid.Health <= 0 then return false end
-    if TeamCheckEnabled and p.Team == LocalPlayer.Team then return false end
-    return true
-end
-
--- Finds closest valid target in FOV
-local function findClosest()
-    local mpos = UserInputService:GetMouseLocation()
-    local closest, minDist = nil, FOVSize
-    for _, p in ipairs(Players:GetPlayers()) do
-        if isValidTarget(p) then
-            local head = p.Character.Head
-            local sp, onScreen = camera:WorldToViewportPoint(head.Position)
-            if onScreen and sp.Z > 0 then
-                local d = (Vector2.new(sp.X, sp.Y) - Vector2.new(mpos.X, mpos.Y)).Magnitude
-                if d < minDist then minDist = d; closest = p end
+-- Funzione per ottenere il target migliore (closest in FOV e non team)
+local function GetClosestTarget()
+    local closestTarget = nil
+    local shortestDistance = FOVSize
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+            local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
+            if onScreen then
+                local dist = (Vector2.new(headPos.X, headPos.Y) - Vector2.new(Mouse.X, Mouse.Y)).magnitude
+                local isEnemy = true -- Qui metti check squadra, se vuoi
+                if dist < shortestDistance and isEnemy then
+                    shortestDistance = dist
+                    closestTarget = player
+                end
             end
         end
     end
-    return closest
+    return closestTarget
 end
 
--- ESP functions
-local function applyESP(p)
-    if p.Character and not p.Character:FindFirstChild("ZnfproESP") then
-        local h = Instance.new("Highlight", p.Character)
-        h.Name = "ZnfproESP"
-        h.FillColor = ESPColor
-        h.FillTransparency = 0.25
-        h.OutlineColor = ESPColor
-        h.OutlineTransparency = 0
+-- Aimbot semplice con smooth
+local function AimAtTarget(target)
+    if not target or not target.Character then return end
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return end
+    local headPos = Camera:WorldToViewportPoint(head.Position)
+    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
 
-        local b = Instance.new("BillboardGui", p.Character)
-        b.Name = "ZnfproESPText"
-        b.Adornee = p.Character.Head
-        b.Size = UDim2.new(0, 100, 0, 50)
-        b.StudsOffset = Vector3.new(0, 2, 0)
-        b.AlwaysOnTop = true
+    local targetPos = Vector2.new(headPos.X, headPos.Y)
+    local newPos = mousePos:Lerp(targetPos, AimSmoothness)
 
-        local t = Instance.new("TextLabel", b)
-        t.Size = UDim2.new(1, 0, 1, 0)
-        t.BackgroundTransparency = 1
-        t.Text = p.Name
-        t.TextColor3 = ESPColor
-        t.TextScaled = true
-        t.Font = Enum.Font.SourceSansBold
-
-        MarkedPlayers[p] = true
-    end
+    -- Muove il mouse verso il nuovo punto (qui devi usare il metodo giusto a seconda del gioco)
+    mousemoverel(newPos.X - mousePos.X, newPos.Y - mousePos.Y)
 end
 
-local function removeESP(p)
-    if p.Character then
-        local h = p.Character:FindFirstChild("ZnfproESP")
-        if h then h:Destroy() end
-        local b = p.Character:FindFirstChild("ZnfproESPText")
-        if b then b:Destroy() end
-    end
-    MarkedPlayers[p] = nil
+-- ESP basico con colori
+local ESPFolder = Instance.new("Folder", ScreenGui)
+ESPFolder.Name = "ESPFolder"
+
+local function CreateESPForPlayer(player)
+    local espBox = Drawing.new("Square")
+    espBox.Color = Color3.fromRGB(0, 255, 0) -- Verde per esempio (puoi variare)
+    espBox.Thickness = 2
+    espBox.Transparency = 1
+    espBox.Filled = false
+    espBox.Visible = false
+
+    local espName = Drawing.new("Text")
+    espName.Text = player.Name
+    espName.Color = Color3.fromRGB(255, 255, 255)
+    espName.Size = 14
+    espName.Center = true
+    espName.Visible = false
+
+    return {Box = espBox, Name = espName}
 end
 
-local function removeAllESP()
-    for p in pairs(MarkedPlayers) do
-        removeESP(p)
-    end
-end
+local ESPData = {}
 
--- Smooth aim function (linear interpolation)
-local function smoothAim(pos)
-    local camPos = camera.CFrame.Position
-    local direction = (pos - camPos).Unit
-    local targetCFrame = CFrame.new(camPos, camPos + direction)
-    camera.CFrame = camera.CFrame:Lerp(targetCFrame, AimSmoothness)
-end
+-- Aggiorna ESP ogni frame
+local function UpdateESP()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+            if not ESPData[player] then
+                ESPData[player] = CreateESPForPlayer(player)
+            end
 
--- Main RenderStepped loop
-RunService.RenderStepped:Connect(function()
-    -- Draw FOV Circle
-    if FOVCircleEnabled then
-        local m = UserInputService:GetMouseLocation()
-        FOVCircle.Position = Vector2.new(m.X, m.Y)
-        FOVCircle.Radius = FOVSize
-        FOVCircle.Color = FOVColor
-        FOVCircle.Visible = true
-    else
-        FOVCircle.Visible = false
-    end
+            local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
+            local esp = ESPData[player]
 
-    -- Aimbot logic with persistent target
-    if AimEnabled then
-        if currentTarget and isValidTarget(currentTarget) then
-            local head = currentTarget.Character.Head
-            local sp, onScreen = camera:WorldToViewportPoint(head.Position)
-            local m = UserInputService:GetMouseLocation()
-            local dist = (Vector2.new(sp.X, sp.Y) - Vector2.new(m.X, m.Y)).Magnitude
-            if onScreen and sp.Z > 0 and dist <= FOVSize then
-                smoothAim(head.Position)
+            if onScreen then
+                local size = 50 -- dimensione box fissa o calcolata
+                esp.Box.Position = Vector2.new(headPos.X - size/2, headPos.Y - size/2)
+                esp.Box.Size = Vector2.new(size, size)
+                esp.Box.Visible = ESPEnabled
+
+                esp.Name.Position = Vector2.new(headPos.X, headPos.Y - size/2 - 15)
+                esp.Name.Visible = ESPEnabled
             else
-                currentTarget = findClosest()
-                if currentTarget then
-                    smoothAim(currentTarget.Character.Head.Position)
-                end
+                esp.Box.Visible = false
+                esp.Name.Visible = false
             end
-        else
-            currentTarget = findClosest()
-            if currentTarget then
-                smoothAim(currentTarget.Character.Head.Position)
-            end
-        end
-    end
-end)
-
--- Silent Aim hook
-local function doSilentAim()
-    if SilentAimEnabled then
-        currentTarget = currentTarget or findClosest()
-        if currentTarget then
-            local old = camera.CFrame
-            camera.CFrame = CFrame.lookAt(old.Position, currentTarget.Character.Head.Position)
-            task.wait()
-            camera.CFrame = old
         end
     end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then
-        spawn(doSilentAim)
-    end
-end)
+-- Aggiorna posizione e dimensione FOV circle
+local function UpdateFOVCircle()
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Radius = FOVSize
+    FOVCircle.Visible = FOVCircleEnabled
+end
 
--- GUI controls: Main Tab
-MainTab:CreateToggle({
-    Name = "Enable Aimbot",
-    CurrentValue = false,
-    Callback = function(value)
-        AimEnabled = value
-        if not value then currentTarget = nil end
-        Rayfield:Notify({ Title = "Aimbot", Content = value and "Enabled" or "Disabled", Duration = 3 })
-    end
-})
+-- Main loop (RunService)
+RunService.RenderStepped:Connect(function()
+    BypassAntiCheat()
 
-MainTab:CreateToggle({
-    Name = "Silent Aim",
-    CurrentValue = false,
-    Callback = function(value)
-        SilentAimEnabled = value
-        Rayfield:Notify({ Title = "Silent Aim", Content = value and "Enabled" or "Disabled", Duration = 3 })
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "FOV Circle",
-    CurrentValue = false,
-    Flag = "FOVToggle",
-    Callback = function(value)
-        FOVCircleEnabled = value
-        Rayfield:Notify({ Title = "FOV Circle", Content = value and "On" or "Off", Duration = 2 })
-    end
-})
-
-MainTab:CreateSlider({
-    Name = "FOV Size",
-    Range = {50, 500},
-    Increment = 10,
-    Suffix = "px",
-    CurrentValue = FOVSize,
-    Flag = "FOVSize",
-    Callback = function(value)
-        FOVSize = value
-    end
-})
-
-MainTab:CreateSlider({
-    Name = "Aim Smoothness",
-    Range = {0.01, 1},
-    Increment = 0.01,
-    CurrentValue = AimSmoothness,
-    Flag = "AimSmooth",
-    Callback = function(value)
-        AimSmoothness = value
-    end
-})
-
-MainTab:CreateToggle({
-    Name = "No Recoil",
-    CurrentValue = false,
-    Flag = "NoRecoil",
-    Callback = function(value)
-        NoRecoilEnabled = value
-    end
-})
-
--- GUI controls: Settings Tab
-SettingsTab:CreateToggle({
-    Name = "ESP",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(value)
-        ESPEnabled = value
-        if value then
-            ESPConn = RunService.Heartbeat:Connect(function()
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if isValidTarget(p) then
-                        applyESP(p)
-                    else
-                        removeESP(p)
-                    end
-                end
-            end)
-        else
-            if ESPConn then ESPConn:Disconnect() end
-            removeAllESP()
+    if AimEnabled then
+        local target = GetClosestTarget()
+        if target then
+            AimAtTarget(target)
         end
-        Rayfield:Notify({ Title = "ESP", Content = value and "Enabled" or "Disabled", Duration = 2 })
     end
-})
 
-SettingsTab:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = true,
-    Flag = "TeamCheck",
-    Callback = function(value)
-        TeamCheckEnabled = value
+    if ESPEnabled then
+        UpdateESP()
     end
-})
-
--- Bypass tab placeholder (expand as needed)
-BypassTab:CreateLabel("No bypasses implemented yet.")
-
--- Cleanup on script unload
-game:BindToClose(function()
-    if ESPConn then ESPConn:Disconnect() end
-    if AimConn then AimConn:Disconnect() end
-    removeAllESP()
-    FOVCircle:Remove()
 end)
+
+-- Aggiorna FOV circle ogni frame (fuori dal main loop)
+RunService.RenderStepped:Connect(UpdateFOVCircle)
+
+-- GUI o comandi per cambiare parametri (da implementare)
+
+print("Script iniziato con FOV size: " .. BEST_FOV_SIZE .. " e Aim Smoothness: " .. BEST_SMOOTHNESS .. " (valori migliori già settati)")
+
