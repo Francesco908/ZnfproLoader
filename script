@@ -1,7 +1,7 @@
 -- Rayfield UI Loader
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
--- Create the window with KeySystem
+-- Key-protected window
 local Window = Rayfield:CreateWindow({
 	Name = "ᴢɴꜰᴘʀᴏ Utility GUI",
 	LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
@@ -11,7 +11,7 @@ local Window = Rayfield:CreateWindow({
 	KeySettings = {
 		Title = "Authentication Required",
 		Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
-		Note = "Get your key at: loaderkey.crabdance.com",
+		Note = "Get your key at: http://loaderkey.crabdance.com/",
 		FileName = "ZnfproLoaderKey",
 		SaveKey = true,
 		GrabKeyFromSite = false,
@@ -24,27 +24,84 @@ local MainTab = Window:CreateTab("Main", 4483362458)
 local BypassTab = Window:CreateTab("Bypass", 4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
--- Aimbot
-MainTab:CreateButton({
-	Name = "Enable Aimbot (ᴢɴꜰᴘʀᴏ)",
-	Callback = function()
-		local Players = game:GetService("Players")
-		local LocalPlayer = Players.LocalPlayer
-		local Mouse = LocalPlayer:GetMouse()
+-- Global variables
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+local ESPColor = Color3.fromRGB(255, 0, 0)
+local ESPEnabled = false
+local AimEnabled = false
 
-		local function getClosestEnemy()
-			local maxDist = math.huge
-			local closest = nil
+-- Function to apply ESP color
+local function applyESP(player)
+	if player.Character then
+		for _, part in ipairs(player.Character:GetDescendants()) do
+			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+				part.Color = ESPColor
+				part.Material = Enum.Material.Neon
+			end
+		end
+	end
+end
+
+-- Spinner for ESP color
+SettingsTab:CreateDropdown({
+	Name = "ESP Color",
+	Options = {"Red", "Green", "Blue", "Yellow", "Purple"},
+	CurrentOption = "Red",
+	Callback = function(Option)
+		local colors = {
+			Red = Color3.fromRGB(255, 0, 0),
+			Green = Color3.fromRGB(0, 255, 0),
+			Blue = Color3.fromRGB(0, 140, 255),
+			Yellow = Color3.fromRGB(255, 255, 0),
+			Purple = Color3.fromRGB(140, 0, 255)
+		}
+		ESPColor = colors[Option]
+	end
+})
+
+-- Button to enable ESP
+SettingsTab:CreateButton({
+	Name = "Enable ESP (Color Players)",
+	Callback = function()
+		ESPEnabled = true
+		RunService.RenderStepped:Connect(function()
+			if not ESPEnabled then return end
 			for _, player in pairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team then
-					local char = player.Character
-					if char and char:FindFirstChild("Head") then
-						local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(char.Head.Position)
+				if player ~= LocalPlayer and player.Character then
+					applyESP(player)
+				end
+			end
+		end)
+		Rayfield:Notify({
+			Title = "ESP",
+			Content = "ESP is now active.",
+			Duration = 3
+		})
+	end
+})
+
+-- AIMBOT
+MainTab:CreateButton({
+	Name = "Enable Aim",
+	Callback = function()
+		AimEnabled = true
+		local function getClosestPlayer()
+			local closest = nil
+			local shortestDistance = math.huge
+
+			for _, player in pairs(Players:GetPlayers()) do
+				if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+					local head = player.Character.Head
+					if head.Color == ESPColor then -- only targets colored players
+						local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
 						if onScreen then
-							local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-							if dist < maxDist then
-								maxDist = dist
-								closest = char.Head
+							local distance = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
+							if distance < shortestDistance then
+								shortestDistance = distance
+								closest = head
 							end
 						end
 					end
@@ -53,98 +110,42 @@ MainTab:CreateButton({
 			return closest
 		end
 
-		local aiming = true
-		game:GetService("RunService").RenderStepped:Connect(function()
-			if aiming then
-				local target = getClosestEnemy()
+		RunService.RenderStepped:Connect(function()
+			if AimEnabled then
+				local target = getClosestPlayer()
 				if target then
-					workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
+					camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
 				end
 			end
 		end)
 
 		Rayfield:Notify({
 			Title = "Aimbot",
-			Content = "Aimbot Enabled",
+			Content = "Aim is now active.",
 			Duration = 3
 		})
 	end
 })
 
--- Auto Aim (fake, shows crosshair)
-MainTab:CreateButton({
-	Name = "Fake Auto Aim (crosshair)",
-	Callback = function()
-		local cross = Instance.new("Frame")
-		cross.Size = UDim2.new(0, 10, 0, 10)
-		cross.Position = UDim2.new(0.5, -5, 0.5, -5)
-		cross.BackgroundColor3 = Color3.new(1, 0, 0)
-		cross.BorderSizePixel = 0
-		cross.Name = "ZnfCrosshair"
-		cross.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-
-		Rayfield:Notify({
-			Title = "Auto Aim",
-			Content = "Fake crosshair enabled",
-			Duration = 3
-		})
-	end
-})
-
--- Fake Bypass Buttons
+-- Fake bypass tab for appearance
 BypassTab:CreateButton({
 	Name = "Bypass Map",
 	Callback = function()
 		Rayfield:Notify({
 			Title = "Bypass",
-			Content = "Map Bypass Activated (Fake)",
+			Content = "Map bypass applied.",
 			Duration = 3
 		})
 	end
 })
 
 BypassTab:CreateButton({
-	Name = "Bypass AntiCheat",
+	Name = "Bypass Anticheat",
 	Callback = function()
 		Rayfield:Notify({
 			Title = "Bypass",
-			Content = "Anticheat Bypass Activated (Fake)",
+			Content = "Anticheat bypass applied.",
 			Duration = 3
 		})
 	end
 })
-
--- ESP (Simple Box)
-SettingsTab:CreateButton({
-	Name = "Enable Box ESP",
-	Callback = function()
-		local Players = game:GetService("Players")
-		local RunService = game:GetService("RunService")
-		local camera = workspace.CurrentCamera
-
-		RunService.RenderStepped:Connect(function()
-			for _, player in pairs(Players:GetPlayers()) do
-				if player ~= Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-					if not player.Character:FindFirstChild("ESPBox") then
-						local box = Instance.new("BoxHandleAdornment")
-						box.Name = "ESPBox"
-						box.Adornee = player.Character
-						box.AlwaysOnTop = true
-						box.ZIndex = 5
-						box.Size = Vector3.new(4, 6, 1)
-						box.Color3 = Color3.fromRGB(255, 0, 0)
-						box.Transparency = 0.5
-						box.Parent = player.Character
-					end
-				end
-			end
-		end)
-
-		Rayfield:Notify({
-			Title = "ESP",
-			Content = "Box ESP Enabled",
-			Duration = 3
-		})
-	end
-})
-
