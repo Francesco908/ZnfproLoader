@@ -1,74 +1,76 @@
 -- Rayfield UI Loader
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
--- Key-protected window
+
+-- Create Key-Protected Window
 local Window = Rayfield:CreateWindow({
 	Name = "ᴢɴꜰᴘʀᴏ Utility GUI",
 	LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
-	LoadingSubtitle = "Best script for shotterGame",
+	LoadingSubtitle = "Best script for shooter games",
 	KeySystem = true,
 	Discord = false,
 	KeySettings = {
 		Title = "Authentication Required",
 		Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
-		Note = "Get your key at: loaderkey.crabdance.com",
+		Note = "Get your key at: http://loaderkey.crabdance.com/",
 		FileName = "ZnfproLoaderKey",
 		SaveKey = true,
 		GrabKeyFromSite = false,
 		Key = {"FREEKEYFORALL"}
 	}
 })
+
 -- Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
-local BypassTab = Window:CreateTab("Bypass", 4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
--- Global variables
+
+-- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local camera = workspace.CurrentCamera
+
+-- Variables
 local ESPColor = Color3.fromRGB(255, 0, 0)
 local ESPEnabled = false
 local AimEnabled = false
-local ESPConnection = nil
-local AimConnection = nil
-local MarkedPlayers = {} -- Traccia i giocatori con ESP attivo
+local ESPConnection, AimConnection
+local MarkedPlayers = {}
 
--- Function to apply ESP color
-local function applyESP(player)
-	if player.Character then
-		for _, part in ipairs(player.Character:GetDescendants()) do
-			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-				part.Color = ESPColor
-				part.Material = Enum.Material.Neon
-			end
-		end
-		MarkedPlayers[player] = true -- Marca il giocatore come colorato
+-- Apply ESP highlight
+local function applyHighlight(player)
+	if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "ZnfproESP"
+		highlight.FillColor = ESPColor
+		highlight.FillTransparency = 0.25
+		highlight.OutlineColor = ESPColor
+		highlight.OutlineTransparency = 0
+		highlight.Adornee = player.Character
+		highlight.Parent = player.Character
+		MarkedPlayers[player] = true
 	end
 end
 
--- Function to update ESP colors for all marked players
-local function updateESPColors()
+-- Update ESP color live
+local function updateHighlightColors()
 	for player, _ in pairs(MarkedPlayers) do
-		if player.Character then
-			applyESP(player)
+		if player.Character and player.Character:FindFirstChild("ZnfproESP") then
+			local h = player.Character.ZnfproESP
+			h.FillColor = ESPColor
+			h.OutlineColor = ESPColor
 		end
 	end
 end
 
--- Function to remove ESP from a player
-local function removeESP(player)
-	if player.Character then
-		for _, part in ipairs(player.Character:GetDescendants()) do
-			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-				part.Color = Color3.fromRGB(163, 162, 165) -- Colore default
-				part.Material = Enum.Material.Plastic
-			end
-		end
-		MarkedPlayers[player] = nil
+-- Remove ESP from character
+local function removeHighlight(player)
+	if player.Character and player.Character:FindFirstChild("ZnfproESP") then
+		player.Character.ZnfproESP:Destroy()
 	end
+	MarkedPlayers[player] = nil
 end
 
--- Spinner for ESP color
+-- ESP Color Dropdown
 SettingsTab:CreateDropdown({
 	Name = "ESP Color",
 	Options = {"Red", "Green", "Blue", "Yellow", "Purple"},
@@ -82,129 +84,67 @@ SettingsTab:CreateDropdown({
 			Purple = Color3.fromRGB(140, 0, 255)
 		}
 		ESPColor = colors[Option]
-		-- Aggiorna i colori di tutti i giocatori già marcati
-		if ESPEnabled then
-			updateESPColors()
-		end
+		updateHighlightColors()
 	end
 })
 
--- Button to enable ESP
+-- Toggle ESP
 SettingsTab:CreateButton({
-	Name = "Enable ESP (Color Players)",
+	Name = "Toggle ESP (Highlight Players)",
 	Callback = function()
+		ESPEnabled = not ESPEnabled
+
 		if ESPEnabled then
-			-- Disabilita ESP
-			ESPEnabled = false
-			if ESPConnection then
-				ESPConnection:Disconnect()
-				ESPConnection = nil
-			end
-			-- Rimuovi ESP da tutti i giocatori
-			for player, _ in pairs(MarkedPlayers) do
-				removeESP(player)
-			end
-			MarkedPlayers = {}
-			Rayfield:Notify({
-				Title = "ESP",
-				Content = "ESP is now disabled.",
-				Duration = 3
-			})
-		else
-			-- Abilita ESP
-			ESPEnabled = true
 			ESPConnection = RunService.RenderStepped:Connect(function()
-				if not ESPEnabled then return end
 				for _, player in pairs(Players:GetPlayers()) do
-					if player ~= LocalPlayer and player.Character then
-						applyESP(player)
+					if player ~= LocalPlayer then
+						applyHighlight(player)
 					end
 				end
 			end)
-			Rayfield:Notify({
-				Title = "ESP",
-				Content = "ESP is now active.",
-				Duration = 3
-			})
+			Rayfield:Notify({ Title = "ESP", Content = "ESP Enabled", Duration = 3 })
+		else
+			if ESPConnection then ESPConnection:Disconnect() end
+			for player, _ in pairs(MarkedPlayers) do
+				removeHighlight(player)
+			end
+			MarkedPlayers = {}
+			Rayfield:Notify({ Title = "ESP", Content = "ESP Disabled", Duration = 3 })
 		end
 	end
 })
 
--- AIMBOT
+-- Toggle Aimbot
 MainTab:CreateButton({
-	Name = "Enable Aim",
+	Name = "Toggle Aimbot (Auto Aim on ESP)",
 	Callback = function()
+		AimEnabled = not AimEnabled
+
 		if AimEnabled then
-			-- Disabilita Aimbot
-			AimEnabled = false
-			if AimConnection then
-				AimConnection:Disconnect()
-				AimConnection = nil
-			end
-			Rayfield:Notify({
-				Title = "Aimbot",
-				Content = "Aim is now disabled.",
-				Duration = 3
-			})
-		else
-			-- Abilita Aimbot
-			AimEnabled = true
-			local function getClosestPlayer()
-				local closest = nil
-				local shortestDistance = math.huge
-				for _, player in pairs(Players:GetPlayers()) do
-					if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+			AimConnection = RunService.RenderStepped:Connect(function()
+				local closest, shortest = nil, math.huge
+				for player, _ in pairs(MarkedPlayers) do
+					if player.Character and player.Character:FindFirstChild("Head") then
 						local head = player.Character.Head
-						-- Controlla se il giocatore è marcato nell'ESP invece del colore
-						if MarkedPlayers[player] then
-							local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
-							if onScreen then
-								local distance = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
-								if distance < shortestDistance then
-									shortestDistance = distance
-									closest = head
-								end
+						local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+						if onScreen then
+							local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
+							if dist < shortest then
+								shortest = dist
+								closest = head
 							end
 						end
 					end
 				end
-				return closest
-			end
-			AimConnection = RunService.RenderStepped:Connect(function()
-				if AimEnabled then
-					local target = getClosestPlayer()
-					if target then
-						camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
-					end
+				if closest then
+					camera.CFrame = CFrame.new(camera.CFrame.Position, closest.Position)
 				end
 			end)
-			Rayfield:Notify({
-				Title = "Aimbot",
-				Content = "Aim is now active.",
-				Duration = 3
-			})
+			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Enabled", Duration = 3 })
+		else
+			if AimConnection then AimConnection:Disconnect() end
+			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Disabled", Duration = 3 })
 		end
 	end
 })
 
--- Fake bypass tab for appearance
-BypassTab:CreateButton({
-	Name = "Bypass Map",
-	Callback = function()
-		Rayfield:Notify({
-			Title = "Bypass",
-			Content = "Map bypass applied.",
-			Duration = 3
-		})
-	end
-})
-BypassTab:CreateButton({
-	Name = "Bypass Anticheat",
-	Callback = function()
-		Rayfield:Notify({
-			Title = "Bypass",
-			Content = "Anticheat bypass applied.",
-			Duration = 3
-		})
-	end
-})
