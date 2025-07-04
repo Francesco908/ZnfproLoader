@@ -19,10 +19,10 @@ local Window = Rayfield:CreateWindow({
 	}
 })
 
--- Tabs with different icons
-local MainTab = Window:CreateTab("Main", 4483362458) -- ESP icon
-local BypassTab = Window:CreateTab("Bypass", 6031091006) -- alternative icon
-local SettingsTab = Window:CreateTab("Settings", 6035047409) -- alternative icon
+-- Tabs
+local MainTab = Window:CreateTab("Main", 4483362458)
+local BypassTab = Window:CreateTab("Bypass", 6031091006)
+local SettingsTab = Window:CreateTab("Settings", 6035047409)
 
 -- Services and variables
 local Players = game:GetService("Players")
@@ -36,7 +36,7 @@ local AimEnabled = false
 local ESPConnection, AimConnection
 local MarkedPlayers = {}
 
--- Apply ESP Highlight
+-- Apply ESP
 local function applyHighlight(player)
 	if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
 		local highlight = Instance.new("Highlight")
@@ -59,7 +59,7 @@ local function removeHighlight(player)
 	MarkedPlayers[player] = nil
 end
 
--- FULL TOGGLE ESP (Enable/Disable Cleanly)
+-- Toggle ESP
 SettingsTab:CreateButton({
 	Name = "Toggle ESP (Highlight Players)",
 	Callback = function()
@@ -85,9 +85,9 @@ SettingsTab:CreateButton({
 	end
 })
 
--- Toggle Aimbot
+-- Toggle Aimbot (camera + character rotation)
 MainTab:CreateButton({
-	Name = "Toggle Aimbot (Auto Aim on ESP)",
+	Name = "Toggle Aimbot (Auto Aim with Rotation)",
 	Callback = function()
 		AimEnabled = not AimEnabled
 
@@ -108,7 +108,17 @@ MainTab:CreateButton({
 					end
 				end
 				if closest then
+					-- Rotazione Camera
 					camera.CFrame = CFrame.new(camera.CFrame.Position, closest.Position)
+
+					-- Rotazione Personaggio
+					local char = LocalPlayer.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						local hrp = char.HumanoidRootPart
+						local direction = (closest.Position - hrp.Position).Unit
+						local newLook = CFrame.new(hrp.Position, hrp.Position + direction)
+						hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, newLook.LookVector:Angle(Vector3.new(0, 0, -1)), 0)
+					end
 				end
 			end)
 			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Enabled", Duration = 3 })
@@ -119,7 +129,7 @@ MainTab:CreateButton({
 	end
 })
 
--- Bypass Tab - Purely for appearance
+-- Bypass Visuals
 BypassTab:CreateButton({
 	Name = "Bypass Map",
 	Callback = function()
