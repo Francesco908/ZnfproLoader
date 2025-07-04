@@ -1,152 +1,447 @@
--- CONFIG INIZIALE (già ottimizzati, non cambiare se non sai)
-local BEST_FOV_SIZE = 340 -- Miglior valore per FOV
-local BEST_SMOOTHNESS = 0.62 -- Miglior valore per smoothing
+-- ZnfPro Universal Gaming Utility - Complete Fix
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
 
--- Variabili globali
-local AimEnabled = true
-local SilentAimEnabled = false
-local ESPEnabled = true
-local FOVCircleEnabled = true
-
-local FOVSize = BEST_FOV_SIZE
-local AimSmoothness = BEST_SMOOTHNESS
-
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
-
--- GUI semplice (puoi personalizzare)
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local FOVCircle = Instance.new("Circle", ScreenGui)
-FOVCircle.Radius = FOVSize
-FOVCircle.Color = Color3.new(1, 0, 0)
-FOVCircle.Thickness = 2
-FOVCircle.Transparency = 0.5
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-FOVCircle.Visible = FOVCircleEnabled
-
--- Bypass base (esempio: nasconde il tuo movimento di mouse)
-local function BypassAntiCheat()
-    -- Qui puoi mettere funzioni per bypass semplici o anti rilevamento
-    -- Per esempio, filtrare movimenti troppo bruschi, randomizzare leggermente
-    -- oppure bloccare eventi sospetti (dipende dal gioco)
+if not success then
+    warn("Failed to load Rayfield UI Library")
+    return
 end
 
--- Funzione per ottenere il target migliore (closest in FOV e non team)
-local function GetClosestTarget()
-    local closestTarget = nil
-    local shortestDistance = FOVSize
+-- Create Window
+local Window = Rayfield:CreateWindow({
+    Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
+    LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
+    LoadingSubtitle = "Universal script for all games",
+    KeySystem = true,
+    KeySettings = {
+        Title = "Authentication Required",
+        Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
+        Note = "Get your key at: loaderkey.crabdance.com",
+        FileName = "ZnfproLoaderKey",
+        SaveKey = true,
+        GrabKeyFromSite = false,
+        Key = {"FREEKEYFORALL"}
+    }
+})
+
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local camera = workspace.CurrentCamera
+
+-- Variables
+local ESPColor = Color3.fromRGB(255, 0, 0)
+local FOVColor = Color3.fromRGB(255, 255, 255)
+local ESPEnabled, AimEnabled, SilentAimEnabled, TeamCheckEnabled, FOVCircleEnabled = false, false, false, false, false
+local FOVSize = 150
+local AimSmoothness = 0.1
+local ESPConn, AimConn, SilentAimConn, FOVConn
+local MarkedPlayers = {}
+
+-- FOV Circle
+local FOVCircle
+if Drawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = false
+    FOVCircle.Filled = false
+    FOVCircle.Transparency = 0.5
+    FOVCircle.Thickness = 2
+    FOVCircle.Color = FOVColor
+    FOVCircle.Radius = FOVSize
+    FOVCircle.NumSides = 64
+    FOVCircle.ZIndex = 2
+end
+
+-- Create Tabs
+local MainTab = Window:CreateTab("Main", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+local BypassTab = Window:CreateTab("Bypass", 6031091006)
+
+-- Universal Helper Functions
+local function getCharacterParts(character)
+    local parts = {}
+    if character then
+        parts.head = character:FindFirstChild("Head")
+        parts.humanoid = character:FindFirstChild("Humanoid")
+        parts.humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        parts.torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    end
+    return parts
+end
+
+local function updateFOVCircle()
+    if FOVCircle and FOVCircleEnabled then
+        FOVCircle.Visible = true
+        FOVCircle.Position = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+        FOVCircle.Radius = FOVSize
+        FOVCircle.Color = FOVColor
+    elseif FOVCircle then
+        FOVCircle.Visible = false
+    end
+end
+
+local function getPlayerTeam(player)
+    if not player then return nil end
+    return player.Team or player.TeamColor or nil
+end
+
+local function isValidTarget(player)
+    if not player or player == LocalPlayer then return false end
+    if not player.Character then return false end
+    
+    local parts = getCharacterParts(player.Character)
+    if not parts.head or not parts.humanoid then return false end
+    
+    -- Check if player is alive
+    if parts.humanoid.Health <= 0 then return false end
+    
+    -- Team check
+    if TeamCheckEnabled then
+        local playerTeam = getPlayerTeam(player)
+        local localTeam = getPlayerTeam(LocalPlayer)
+        if playerTeam and localTeam and playerTeam == localTeam then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function getClosestPlayerInFOV()
+    local closest, shortest = nil, math.huge
+    local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+    
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-            local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
-            if onScreen then
-                local dist = (Vector2.new(headPos.X, headPos.Y) - Vector2.new(Mouse.X, Mouse.Y)).magnitude
-                local isEnemy = true -- Qui metti check squadra, se vuoi
-                if dist < shortestDistance and isEnemy then
-                    shortestDistance = dist
-                    closestTarget = player
+        if isValidTarget(player) then
+            local parts = getCharacterParts(player.Character)
+            if parts.head then
+                local pos, onScreen = camera:WorldToViewportPoint(parts.head.Position)
+                if onScreen and pos.Z > 0 then
+                    local screenPos = Vector2.new(pos.X, pos.Y)
+                    local distance = (screenPos - center).Magnitude
+                    if distance <= FOVSize and distance < shortest then
+                        shortest, closest = distance, player
+                    end
                 end
             end
         end
     end
-    return closestTarget
+    return closest
 end
 
--- Aimbot semplice con smooth
-local function AimAtTarget(target)
-    if not target or not target.Character then return end
-    local head = target.Character:FindFirstChild("Head")
-    if not head then return end
-    local headPos = Camera:WorldToViewportPoint(head.Position)
-    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
-
-    local targetPos = Vector2.new(headPos.X, headPos.Y)
-    local newPos = mousePos:Lerp(targetPos, AimSmoothness)
-
-    -- Muove il mouse verso il nuovo punto (qui devi usare il metodo giusto a seconda del gioco)
-    mousemoverel(newPos.X - mousePos.X, newPos.Y - mousePos.Y)
+local function applyESP(player)
+    if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
+        pcall(function()
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ZnfproESP"
+            highlight.FillColor = ESPColor
+            highlight.FillTransparency = 0.25
+            highlight.OutlineColor = ESPColor
+            highlight.OutlineTransparency = 0
+            highlight.Adornee = player.Character
+            highlight.Parent = player.Character
+            
+            -- Add distance text
+            local billboardGui = Instance.new("BillboardGui")
+            billboardGui.Name = "ZnfproESPText"
+            billboardGui.Adornee = player.Character:FindFirstChild("Head")
+            billboardGui.Size = UDim2.new(0, 100, 0, 50)
+            billboardGui.StudsOffset = Vector3.new(0, 2, 0)
+            billboardGui.Parent = player.Character
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = player.Name
+            textLabel.TextColor3 = ESPColor
+            textLabel.TextScaled = true
+            textLabel.Font = Enum.Font.SourceSansBold
+            textLabel.Parent = billboardGui
+            
+            MarkedPlayers[player] = true
+        end)
+    end
 end
 
--- ESP basico con colori
-local ESPFolder = Instance.new("Folder", ScreenGui)
-ESPFolder.Name = "ESPFolder"
-
-local function CreateESPForPlayer(player)
-    local espBox = Drawing.new("Square")
-    espBox.Color = Color3.fromRGB(0, 255, 0) -- Verde per esempio (puoi variare)
-    espBox.Thickness = 2
-    espBox.Transparency = 1
-    espBox.Filled = false
-    espBox.Visible = false
-
-    local espName = Drawing.new("Text")
-    espName.Text = player.Name
-    espName.Color = Color3.fromRGB(255, 255, 255)
-    espName.Size = 14
-    espName.Center = true
-    espName.Visible = false
-
-    return {Box = espBox, Name = espName}
+local function removeESP(player)
+    if player.Character then
+        pcall(function()
+            local highlight = player.Character:FindFirstChild("ZnfproESP")
+            local billboard = player.Character:FindFirstChild("ZnfproESPText")
+            if highlight then highlight:Destroy() end
+            if billboard then billboard:Destroy() end
+        end)
+    end
+    MarkedPlayers[player] = nil
 end
 
-local ESPData = {}
+local function removeAllESP()
+    for player in pairs(MarkedPlayers) do
+        removeESP(player)
+    end
+    MarkedPlayers = {}
+end
 
--- Aggiorna ESP ogni frame
-local function UpdateESP()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-            if not ESPData[player] then
-                ESPData[player] = CreateESPForPlayer(player)
+-- Smooth Aimbot Function
+local function smoothAim(targetPosition)
+    local currentCFrame = camera.CFrame
+    local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPosition)
+    
+    -- Smooth interpolation
+    local newCFrame = currentCFrame:Lerp(targetCFrame, AimSmoothness)
+    camera.CFrame = newCFrame
+end
+
+-- Main Tab: Toggle Aimbot
+MainTab:CreateButton({
+    Name = "Toggle Aimbot",
+    Callback = function()
+        AimEnabled = not AimEnabled
+        if AimEnabled then
+            AimConn = RunService.Heartbeat:Connect(function()
+                local target = getClosestPlayerInFOV()
+                if target and target.Character then
+                    local parts = getCharacterParts(target.Character)
+                    if parts.head then
+                        smoothAim(parts.head.Position)
+                    end
+                end
+            end)
+            Rayfield:Notify({Title = "Aimbot", Content = "Enabled", Duration = 3})
+        else
+            if AimConn then 
+                AimConn:Disconnect() 
+                AimConn = nil 
             end
+            Rayfield:Notify({Title = "Aimbot", Content = "Disabled", Duration = 3})
+        end
+    end
+})
 
-            local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
-            local esp = ESPData[player]
+-- Main Tab: Toggle Silent Aim
+MainTab:CreateButton({
+    Name = "Toggle Silent Aim",
+    Callback = function()
+        SilentAimEnabled = not SilentAimEnabled
+        Rayfield:Notify({Title = "Silent Aim", Content = SilentAimEnabled and "Enabled" or "Disabled", Duration = 3})
+    end
+})
 
-            if onScreen then
-                local size = 50 -- dimensione box fissa o calcolata
-                esp.Box.Position = Vector2.new(headPos.X - size/2, headPos.Y - size/2)
-                esp.Box.Size = Vector2.new(size, size)
-                esp.Box.Visible = ESPEnabled
+-- Main Tab: FOV Circle Toggle
+MainTab:CreateToggle({
+    Name = "FOV Circle",
+    CurrentValue = false,
+    Flag = "FOVCircleToggle",
+    Callback = function(value)
+        FOVCircleEnabled = value
+        if value and FOVCircle then
+            FOVConn = RunService.Heartbeat:Connect(updateFOVCircle)
+        else
+            if FOVConn then 
+                FOVConn:Disconnect() 
+                FOVConn = nil 
+            end
+            if FOVCircle then
+                FOVCircle.Visible = false
+            end
+        end
+        Rayfield:Notify({Title = "FOV Circle", Content = value and "Enabled" or "Disabled", Duration = 3})
+    end
+})
 
-                esp.Name.Position = Vector2.new(headPos.X, headPos.Y - size/2 - 15)
-                esp.Name.Visible = ESPEnabled
-            else
-                esp.Box.Visible = false
-                esp.Name.Visible = false
+-- Main Tab: FOV Size Slider
+MainTab:CreateSlider({
+    Name = "FOV Size",
+    Range = {50, 500},
+    Increment = 10,
+    Suffix = "px",
+    CurrentValue = 150,
+    Flag = "FOVSizeSlider",
+    Callback = function(value)
+        FOVSize = value
+        if FOVCircle then
+            FOVCircle.Radius = value
+        end
+    end
+})
+
+-- Main Tab: Aim Smoothness Slider
+MainTab:CreateSlider({
+    Name = "Aim Smoothness",
+    Range = {0.01, 1},
+    Increment = 0.01,
+    Suffix = "",
+    CurrentValue = 0.1,
+    Flag = "AimSmoothnessSlider",
+    Callback = function(value)
+        AimSmoothness = value
+        Rayfield:Notify({Title = "Smoothness", Content = tostring(value), Duration = 2})
+    end
+})
+
+-- Silent Aim Hook
+local function performSilentAim()
+    if SilentAimEnabled then
+        local target = getClosestPlayerInFOV()
+        if target and target.Character then
+            local parts = getCharacterParts(target.Character)
+            if parts.head then
+                local oldCFrame = camera.CFrame
+                camera.CFrame = CFrame.lookAt(oldCFrame.Position, parts.head.Position)
+                task.wait()
+                camera.CFrame = oldCFrame
             end
         end
     end
 end
 
--- Aggiorna posizione e dimensione FOV circle
-local function UpdateFOVCircle()
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Radius = FOVSize
-    FOVCircle.Visible = FOVCircleEnabled
-end
-
--- Main loop (RunService)
-RunService.RenderStepped:Connect(function()
-    BypassAntiCheat()
-
-    if AimEnabled then
-        local target = GetClosestTarget()
-        if target then
-            AimAtTarget(target)
-        end
-    end
-
-    if ESPEnabled then
-        UpdateESP()
+-- Universal mouse hook for silent aim
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        spawn(performSilentAim)
     end
 end)
 
--- Aggiorna FOV circle ogni frame (fuori dal main loop)
-RunService.RenderStepped:Connect(UpdateFOVCircle)
+-- Settings Tab: Toggle ESP
+SettingsTab:CreateButton({
+    Name = "Toggle ESP",
+    Callback = function()
+        ESPEnabled = not ESPEnabled
+        if ESPEnabled then
+            ESPConn = RunService.Heartbeat:Connect(function()
+                for _, player in pairs(Players:GetPlayers()) do
+                    if isValidTarget(player) and not MarkedPlayers[player] then
+                        applyESP(player)
+                    elseif not isValidTarget(player) and MarkedPlayers[player] then
+                        removeESP(player)
+                    end
+                end
+            end)
+            Rayfield:Notify({Title = "ESP", Content = "Enabled", Duration = 3})
+        else
+            if ESPConn then 
+                ESPConn:Disconnect() 
+                ESPConn = nil 
+            end
+            removeAllESP()
+            Rayfield:Notify({Title = "ESP", Content = "Disabled", Duration = 3})
+        end
+    end
+})
 
--- GUI o comandi per cambiare parametri (da implementare)
+-- Settings Tab: Team Check Toggle
+SettingsTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = false,
+    Flag = "TeamCheckToggle",
+    Callback = function(value)
+        TeamCheckEnabled = value
+        if ESPEnabled then
+            removeAllESP()
+        end
+        Rayfield:Notify({Title = "Team Check", Content = value and "On" or "Off", Duration = 2})
+    end
+})
 
-print("Script iniziato con FOV size: " .. BEST_FOV_SIZE .. " e Aim Smoothness: " .. BEST_SMOOTHNESS .. " (valori migliori già settati)")
+-- Settings Tab: ESP Color Picker
+SettingsTab:CreateColorPicker({
+    Name = "ESP Color",
+    Color = ESPColor,
+    Flag = "ESPColorPicker",
+    Callback = function(value)
+        ESPColor = value
+        for player in pairs(MarkedPlayers) do
+            if player.Character then
+                local highlight = player.Character:FindFirstChild("ZnfproESP")
+                local billboard = player.Character:FindFirstChild("ZnfproESPText")
+                if highlight then
+                    highlight.FillColor = value
+                    highlight.OutlineColor = value
+                end
+                if billboard and billboard:FindFirstChild("TextLabel") then
+                    billboard.TextLabel.TextColor3 = value
+                end
+            end
+        end
+    end
+})
 
+-- Settings Tab: FOV Circle Color Picker
+SettingsTab:CreateColorPicker({
+    Name = "FOV Color",
+    Color = FOVColor,
+    Flag = "FOVColorPicker",
+    Callback = function(value)
+        FOVColor = value
+        if FOVCircle then 
+            FOVCircle.Color = value 
+        end
+    end
+})
+
+-- Bypass Tab
+BypassTab:CreateButton({
+    Name = "Universal Bypass",
+    Callback = function()
+        -- Universal bypass techniques
+        pcall(function()
+            -- Disable common anti-cheat methods
+            for _, v in pairs(getgc(true)) do
+                if type(v) == "table" and rawget(v, "Detected") then
+                    rawset(v, "Detected", function() return false end)
+                end
+            end
+        end)
+        Rayfield:Notify({Title = "Bypass", Content = "Universal bypass applied", Duration = 3})
+    end
+})
+
+BypassTab:CreateButton({
+    Name = "Speed Hack",
+    Callback = function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 50
+            Rayfield:Notify({Title = "Speed", Content = "Speed increased to 50", Duration = 3})
+        end
+    end
+})
+
+BypassTab:CreateButton({
+    Name = "Jump Power",
+    Callback = function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = 100
+            Rayfield:Notify({Title = "Jump", Content = "Jump power increased", Duration = 3})
+        end
+    end
+})
+
+-- Cleanup Events
+Players.PlayerRemoving:Connect(function(player)
+    if MarkedPlayers[player] then 
+        removeESP(player) 
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterRemoving:Connect(function()
+        if MarkedPlayers[player] then
+            MarkedPlayers[player] = nil
+        end
+    end)
+end)
+
+-- Character respawn handling
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    camera = workspace.CurrentCamera
+end)
+
+-- Initialize
+task.wait(1)
+updateFOVCircle()
+print("ZnfPro Universal GUI loaded successfully!")
