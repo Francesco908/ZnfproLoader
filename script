@@ -7,10 +7,10 @@ end)
 if not success then warn("Failed to load Rayfield UI Library"); return end
 
 -- Create Window
-global Window = Rayfield:CreateWindow({
+local Window = Rayfield:CreateWindow({
     Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
     LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
-    LoadingSubtitle = "Universal shotter script for all games",
+    LoadingSubtitle = "Universal script for all games",
     KeySystem = true,
     KeySettings = {
         Title = "Authentication Required",
@@ -22,6 +22,11 @@ global Window = Rayfield:CreateWindow({
         Key = {"FREEKEYFORALL"}
     }
 })
+
+-- Tabs
+local MainTab     = Window:CreateTab("Main",     4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+local BypassTab   = Window:CreateTab("Bypass",   6031091006)
 
 -- Services
 local Players            = game:GetService("Players")
@@ -40,7 +45,11 @@ local currentTarget = nil
 
 -- FOV Circle
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Filled = false; FOVCircle.Transparency = 0.6; FOVCircle.Thickness = 2; FOVCircle.NumSides = 64; FOVCircle.ZIndex = 2
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.6
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 64
+FOVCircle.ZIndex = 2
 
 -- Helpers
 local function getCharacterParts(c)
@@ -107,13 +116,15 @@ RunService.RenderStepped:Connect(function()
     -- Draw FOV
     if FOVCircleEnabled then
         local m = UserInputService:GetMouseLocation()
-        FOVCircle.Position = Vector2.new(m.X, m.Y); FOVCircle.Radius = FOVSize; FOVCircle.Color = FOVColor; FOVCircle.Visible = true
+        FOVCircle.Position = Vector2.new(m.X, m.Y)
+        FOVCircle.Radius = FOVSize
+        FOVCircle.Color = FOVColor
+        FOVCircle.Visible = true
     else
         FOVCircle.Visible = false
     end
     -- Aimbot logic with persistent target
     if AimEnabled then
-        -- If currently targeting and still valid and inside FOV
         if currentTarget and isValidTarget(currentTarget) then
             local head = currentTarget.Character.Head
             local sp, onScreen = camera:WorldToViewportPoint(head.Position)
@@ -122,7 +133,7 @@ RunService.RenderStepped:Connect(function()
             if onScreen and sp.Z>0 and dist <= FOVSize then
                 smoothAim(head.Position)
             else
-                currentTarget = findClosest()  -- fallback
+                currentTarget = findClosest()
                 if currentTarget then smoothAim(currentTarget.Character.Head.Position) end
             end
         else
@@ -145,9 +156,7 @@ local function doSilentAim()
     end
 end
 UserInputService.InputBegan:Connect(function(i, g)
-    if not g and i.UserInputType == Enum.UserInputType.MouseButton1 then
-        spawn(doSilentAim)
-    end
+    if not g and i.UserInputType == Enum.UserInputType.MouseButton1 then spawn(doSilentAim) end
 end)
 
 -- GUI controls: Main Tab
@@ -201,24 +210,16 @@ BypassTab:CreateButton({ Name = "Universal Bypass", Callback = function()
     Rayfield:Notify({ Title = "Bypass", Content = "Applied", Duration = 3 })
 end })
 BypassTab:CreateButton({ Name = "Speed Hack", Callback = function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = 50
-    end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = 50 end
 end })
 BypassTab:CreateButton({ Name = "Jump Power", Callback = function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.JumpPower = 100
-    end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.JumpPower = 100 end
 end })
 BypassTab:CreateSlider({ Name = "Walk Speed", Range = {16,100}, Increment = 1, CurrentValue = 16, Suffix = "", Flag = "WalkSpeed", Callback = function(v)
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = v
-    end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = v end
 end })
 BypassTab:CreateSlider({ Name = "Jump Power", Range = {50,200}, Increment = 1, CurrentValue = 50, Suffix = "", Flag = "JumpPower", Callback = function(v)
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.JumpPower = v
-    end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.JumpPower = v end
 end })
 
 -- Cleanup
@@ -227,4 +228,4 @@ Players.PlayerAdded:Connect(function(p) p.CharacterRemoving:Connect(function() M
 LocalPlayer.CharacterAdded:Connect(function() task.wait(1); camera = workspace.CurrentCamera end)
 
 -- Init
-task.wait(1); updateFOVCircle(); print("ZnfPro Universal GUI loaded!")
+task.wait(1); print("ZnfPro Universal GUI loaded!")
