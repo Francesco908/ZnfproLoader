@@ -1,6 +1,5 @@
 -- Rayfield UI Loader
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-
 -- Key-protected window
 local Window = Rayfield:CreateWindow({
 	Name = "ᴢɴꜰᴘʀᴏ Utility GUI",
@@ -18,12 +17,10 @@ local Window = Rayfield:CreateWindow({
 		Key = {"FREEKEYFORALL"}
 	}
 })
-
 -- Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
 local BypassTab = Window:CreateTab("Bypass", 4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
-
 -- Global variables
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -32,6 +29,9 @@ local camera = workspace.CurrentCamera
 local ESPColor = Color3.fromRGB(255, 0, 0)
 local ESPEnabled = false
 local AimEnabled = false
+local ESPConnection = nil
+local AimConnection = nil
+local MarkedPlayers = {} -- Traccia i giocatori con ESP attivo
 
 -- Function to apply ESP color
 local function applyESP(player)
@@ -42,6 +42,29 @@ local function applyESP(player)
 				part.Material = Enum.Material.Neon
 			end
 		end
+		MarkedPlayers[player] = true -- Marca il giocatore come colorato
+	end
+end
+
+-- Function to update ESP colors for all marked players
+local function updateESPColors()
+	for player, _ in pairs(MarkedPlayers) do
+		if player.Character then
+			applyESP(player)
+		end
+	end
+end
+
+-- Function to remove ESP from a player
+local function removeESP(player)
+	if player.Character then
+		for _, part in ipairs(player.Character:GetDescendants()) do
+			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+				part.Color = Color3.fromRGB(163, 162, 165) -- Colore default
+				part.Material = Enum.Material.Plastic
+			end
+		end
+		MarkedPlayers[player] = nil
 	end
 end
 
@@ -59,6 +82,10 @@ SettingsTab:CreateDropdown({
 			Purple = Color3.fromRGB(140, 0, 255)
 		}
 		ESPColor = colors[Option]
+		-- Aggiorna i colori di tutti i giocatori già marcati
+		if ESPEnabled then
+			updateESPColors()
+		end
 	end
 })
 
@@ -66,20 +93,40 @@ SettingsTab:CreateDropdown({
 SettingsTab:CreateButton({
 	Name = "Enable ESP (Color Players)",
 	Callback = function()
-		ESPEnabled = true
-		RunService.RenderStepped:Connect(function()
-			if not ESPEnabled then return end
-			for _, player in pairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer and player.Character then
-					applyESP(player)
-				end
+		if ESPEnabled then
+			-- Disabilita ESP
+			ESPEnabled = false
+			if ESPConnection then
+				ESPConnection:Disconnect()
+				ESPConnection = nil
 			end
-		end)
-		Rayfield:Notify({
-			Title = "ESP",
-			Content = "ESP is now active.",
-			Duration = 3
-		})
+			-- Rimuovi ESP da tutti i giocatori
+			for player, _ in pairs(MarkedPlayers) do
+				removeESP(player)
+			end
+			MarkedPlayers = {}
+			Rayfield:Notify({
+				Title = "ESP",
+				Content = "ESP is now disabled.",
+				Duration = 3
+			})
+		else
+			-- Abilita ESP
+			ESPEnabled = true
+			ESPConnection = RunService.RenderStepped:Connect(function()
+				if not ESPEnabled then return end
+				for _, player in pairs(Players:GetPlayers()) do
+					if player ~= LocalPlayer and player.Character then
+						applyESP(player)
+					end
+				end
+			end)
+			Rayfield:Notify({
+				Title = "ESP",
+				Content = "ESP is now active.",
+				Duration = 3
+			})
+		end
 	end
 })
 
@@ -87,43 +134,56 @@ SettingsTab:CreateButton({
 MainTab:CreateButton({
 	Name = "Enable Aim",
 	Callback = function()
-		AimEnabled = true
-		local function getClosestPlayer()
-			local closest = nil
-			local shortestDistance = math.huge
-
-			for _, player in pairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-					local head = player.Character.Head
-					if head.Color == ESPColor then -- only targets colored players
-						local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
-						if onScreen then
-							local distance = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
-							if distance < shortestDistance then
-								shortestDistance = distance
-								closest = head
+		if AimEnabled then
+			-- Disabilita Aimbot
+			AimEnabled = false
+			if AimConnection then
+				AimConnection:Disconnect()
+				AimConnection = nil
+			end
+			Rayfield:Notify({
+				Title = "Aimbot",
+				Content = "Aim is now disabled.",
+				Duration = 3
+			})
+		else
+			-- Abilita Aimbot
+			AimEnabled = true
+			local function getClosestPlayer()
+				local closest = nil
+				local shortestDistance = math.huge
+				for _, player in pairs(Players:GetPlayers()) do
+					if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+						local head = player.Character.Head
+						-- Controlla se il giocatore è marcato nell'ESP invece del colore
+						if MarkedPlayers[player] then
+							local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+							if onScreen then
+								local distance = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
+								if distance < shortestDistance then
+									shortestDistance = distance
+									closest = head
+								end
 							end
 						end
 					end
 				end
+				return closest
 			end
-			return closest
-		end
-
-		RunService.RenderStepped:Connect(function()
-			if AimEnabled then
-				local target = getClosestPlayer()
-				if target then
-					camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
+			AimConnection = RunService.RenderStepped:Connect(function()
+				if AimEnabled then
+					local target = getClosestPlayer()
+					if target then
+						camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
+					end
 				end
-			end
-		end)
-
-		Rayfield:Notify({
-			Title = "Aimbot",
-			Content = "Aim is now active.",
-			Duration = 3
-		})
+			end)
+			Rayfield:Notify({
+				Title = "Aimbot",
+				Content = "Aim is now active.",
+				Duration = 3
+			})
+		end
 	end
 })
 
@@ -138,7 +198,6 @@ BypassTab:CreateButton({
 		})
 	end
 })
-
 BypassTab:CreateButton({
 	Name = "Bypass Anticheat",
 	Callback = function()
