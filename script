@@ -1,0 +1,68 @@
+-- Rayfield UI Loader
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+-- Create the main window with KeySystem enabled
+local Window = Rayfield:CreateWindow({
+	Name = "ᴢɴꜰᴘʀᴏ Speed GUI",
+	LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
+	LoadingSubtitle = "Key required to access",
+	KeySystem = true,
+	Discord = false,
+	KeySettings = {
+		Title = "Authentication Required",
+		Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
+		Note = "Get your key at: https://ZnfproLoader.ignorelist.com",
+		FileName = "ZnfproSpeedKey",
+		SaveKey = true,
+		GrabKeyFromSite = false,
+		Key = {"FREEKEYFORALL"} -- ✅ Your actual key
+	}
+})
+
+-- Create the main tab
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+-- Variables
+local speedEnabled = false
+local defaultSpeed = 16
+local customSpeed = 60 -- Default value, will be updated by slider
+
+-- Button to toggle WalkSpeed
+MainTab:CreateButton({
+	Name = "Toggle WalkSpeed (ᴢɴꜰᴘʀᴏ)",
+	Callback = function()
+		local player = game.Players.LocalPlayer
+		local character = player.Character or player.CharacterAdded:Wait()
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+		if humanoid then
+			speedEnabled = not speedEnabled
+			humanoid.WalkSpeed = speedEnabled and customSpeed or defaultSpeed
+
+			Rayfield:Notify({
+				Title = "WalkSpeed",
+				Content = speedEnabled and "🏃 Speed Enabled!" or "🚶 Normal Speed.",
+				Duration = 3
+			})
+		end
+	end
+})
+
+-- Slider to adjust speed
+MainTab:CreateSlider({
+	Name = "Set WalkSpeed",
+	Range = {0, 200},
+	Increment = 1,
+	Suffix = "Speed",
+	CurrentValue = customSpeed,
+	Flag = "SpeedSlider",
+	Callback = function(Value)
+		customSpeed = Value
+		local player = game.Players.LocalPlayer
+		local character = player.Character or player.CharacterAdded:Wait()
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and speedEnabled then
+			humanoid.WalkSpeed = customSpeed
+		end
+	end,
+})
