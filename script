@@ -1,14 +1,14 @@
-```lua
--- ZnfPro Universal Gaming Utility – No Recoil & Enhanced Aimbot
+-- ZnfPro Universal Gaming Utility - Complete Fix
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
+
 if not success then
     warn("Failed to load Rayfield UI Library")
     return
 end
 
--- Window
+-- Create Window
 local Window = Rayfield:CreateWindow({
     Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
     LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
@@ -25,29 +25,25 @@ local Window = Rayfield:CreateWindow({
     }
 })
 
--- Services & Vars
-local Players          = game:GetService("Players")
-local LocalPlayer      = Players.LocalPlayer
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local camera           = workspace.CurrentCamera
+-- Services
+local Players            = game:GetService("Players")
+local LocalPlayer        = Players.LocalPlayer
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local camera             = workspace.CurrentCamera
 
-local ESPColor         = Color3.fromRGB(255, 0, 0)
-local FOVColor         = Color3.fromRGB(255, 255, 255)
-local ESPEnabled       = false
-local AimEnabled       = false
-local SilentAimEnabled = false
-local TeamCheckEnabled = false
-local FOVCircleEnabled = false
-local NoRecoilEnabled  = false
+-- Variables
+local ESPColor           = Color3.fromRGB(255, 0, 0)
+local FOVColor           = Color3.fromRGB(255, 255, 255)
+local ESPEnabled, AimEnabled, SilentAimEnabled, TeamCheckEnabled, FOVCircleEnabled, NoRecoilEnabled =
+      false, false, false, false, false, false
+local FOVSize            = 150
+local AimSmoothness      = 0.1
+local ESPConn, AimConn, SilentAimConn, FOVConn
+local MarkedPlayers      = {}
 
-local FOVSize       = 150
-local AimSmoothness = 0.1
-
-local ESPConn, AimConn, FOVConn
-local MarkedPlayers = {}
-
--- FOV Circle (Drawing API)
+-- FOV Circle
 local FOVCircle
 if Drawing then
     FOVCircle = Drawing.new("Circle")
@@ -61,274 +57,331 @@ if Drawing then
     FOVCircle.ZIndex       = 2
 end
 
--- Tabs
+-- Create Tabs
 local MainTab     = Window:CreateTab("Main",     4483362458)
-local SettingsTab = Window:CreateTab("Settings", 123456789)  -- new icon ID
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
 local BypassTab   = Window:CreateTab("Bypass",   6031091006)
 
--- Helper: character parts
-local function getParts(char)
-    return {
-        head = char:FindFirstChild("Head"),
-        humanoid = char:FindFirstChild("Humanoid"),
-        hrp = char:FindFirstChild("HumanoidRootPart")
-    }
+-- Universal Helper Functions
+local function getCharacterParts(character)
+    local parts = {}
+    if character then
+        parts.head = character:FindFirstChild("Head")
+        parts.humanoid = character:FindFirstChild("Humanoid")
+        parts.humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        parts.torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    end
+    return parts
 end
 
--- Update FOV circle
 local function updateFOVCircle()
     if FOVCircle and FOVCircleEnabled then
-        FOVCircle.Visible  = true
+        FOVCircle.Visible = true
         FOVCircle.Position = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-        FOVCircle.Radius   = FOVSize
-        FOVCircle.Color    = FOVColor
+        FOVCircle.Radius = FOVSize
+        FOVCircle.Color = FOVColor
     elseif FOVCircle then
         FOVCircle.Visible = false
     end
 end
 
--- Team check
-local function sameTeam(pl)
-    return pl.Team and LocalPlayer.Team and pl.Team == LocalPlayer.Team
+local function getPlayerTeam(player)
+    if not player then return nil end
+    return player.Team or player.TeamColor or nil
 end
 
--- Validate target
-local function isValid(pl)
-    if pl == LocalPlayer then return false end
-    if not pl.Character then return false end
-    local p = getParts(pl.Character)
-    if not p.head or not p.humanoid or p.humanoid.Health <= 0 then return false end
-    if TeamCheckEnabled and sameTeam(pl) then return false end
+local function isValidTarget(player)
+    if not player or player == LocalPlayer then return false end
+    if not player.Character then return false end
+
+    local parts = getCharacterParts(player.Character)
+    if not parts.head or not parts.humanoid then return false end
+    if parts.humanoid.Health <= 0 then return false end
+
+    if TeamCheckEnabled then
+        local pTeam = getPlayerTeam(player)
+        local lTeam = getPlayerTeam(LocalPlayer)
+        if pTeam and lTeam and pTeam == lTeam then
+            return false
+        end
+    end
+
     return true
 end
 
--- Closest in FOV
-local function getClosest()
+local function getClosestPlayerInFOV()
+    local closest, shortest = nil, math.huge
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-    local best, dist = nil, math.huge
-    for _, pl in pairs(Players:GetPlayers()) do
-        if isValid(pl) then
-            local pos, on = camera:WorldToViewportPoint(pl.Character.Head.Position)
-            if on and pos.Z > 0 then
-                local d = (Vector2.new(pos.X,pos.Y) - center).Magnitude
-                if d <= FOVSize and d < dist then
-                    best, dist = pl, d
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if isValidTarget(player) then
+            local parts = getCharacterParts(player.Character)
+            if parts.head then
+                local pos, onScreen = camera:WorldToViewportPoint(parts.head.Position)
+                if onScreen and pos.Z > 0 then
+                    local screenPos = Vector2.new(pos.X, pos.Y)
+                    local distance = (screenPos - center).Magnitude
+                    if distance <= FOVSize and distance < shortest then
+                        shortest, closest = distance, player
+                    end
                 end
             end
         end
     end
-    return best
+
+    return closest
 end
 
--- Predictive lead (basic)
-local function predict(pos)
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return pos end
-    local d = (hrp.Position - pos).Magnitude
-    local vel = hrp.Velocity
-    local t = d / 1000
-    return pos + vel * t
-end
+local function applyESP(player)
+    if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
+        pcall(function()
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ZnfproESP"
+            highlight.FillColor = ESPColor
+            highlight.FillTransparency = 0.25
+            highlight.OutlineColor = ESPColor
+            highlight.OutlineTransparency = 0
+            highlight.Adornee = player.Character
+            highlight.Parent = player.Character
 
--- Smooth aim
-local function smoothAim(target)
-    local cf   = camera.CFrame
-    local goal = CFrame.lookAt(cf.Position, target)
-    camera.CFrame = cf:Lerp(goal, AimSmoothness)
-end
+            -- Add distance text
+            local billboardGui = Instance.new("BillboardGui")
+            billboardGui.Name = "ZnfproESPText"
+            billboardGui.Adornee = player.Character:FindFirstChild("Head")
+            billboardGui.Size = UDim2.new(0, 100, 0, 50)
+            billboardGui.StudsOffset = Vector3.new(0, 2, 0)
+            billboardGui.Parent = player.Character
 
--- ESP apply/remove
-local function applyESP(pl)
-    if pl.Character and not pl.Character:FindFirstChild("ZnfproESP") then
-        local h = Instance.new("Highlight", pl.Character)
-        h.Name             = "ZnfproESP"
-        h.FillColor        = ESPColor
-        h.FillTransparency = 0.25
-        h.OutlineColor     = ESPColor
-        h.OutlineTransparency = 0
-        MarkedPlayers[pl] = true
-    end
-end
-local function removeESP(pl)
-    if pl.Character then
-        local h = pl.Character:FindFirstChild("ZnfproESP")
-        if h then h:Destroy() end
-    end
-    MarkedPlayers[pl] = nil
-end
-local function clearESP()
-    for pl in pairs(MarkedPlayers) do removeESP(pl) end
-end
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = player.Name
+            textLabel.TextColor3 = ESPColor
+            textLabel.TextScaled = true
+            textLabel.Font = Enum.Font.SourceSansBold
+            textLabel.Parent = billboardGui
 
--- No Recoil: revert camera after shot
-UserInputService.InputBegan:Connect(function(inp,gp)
-    if gp then return end
-    if NoRecoilEnabled and inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        local pre = camera.CFrame
-        task.delay(0.05, function()
-            camera.CFrame = pre
+            MarkedPlayers[player] = true
         end)
     end
-end)
+end
 
--- Silent Aim hook
-UserInputService.InputBegan:Connect(function(inp,gp)
-    if gp then return end
-    if inp.UserInputType == Enum.UserInputType.MouseButton1 and SilentAimEnabled then
-        local tgt = getClosest()
-        if tgt then
-            local old = camera.CFrame
-            local pd  = predict(tgt.Character.Head.Position)
-            camera.CFrame = CFrame.lookAt(old.Position, pd)
-            task.wait(0.01)
-            camera.CFrame = old
-        end
+local function removeESP(player)
+    if player.Character then
+        pcall(function()
+            local highlight = player.Character:FindFirstChild("ZnfproESP")
+            local billboard = player.Character:FindFirstChild("ZnfproESPText")
+            if highlight then highlight:Destroy() end
+            if billboard then billboard:Destroy() end
+        end)
     end
-end)
+    MarkedPlayers[player] = nil
+end
 
--- Main Tab
+local function removeAllESP()
+    for player in pairs(MarkedPlayers) do
+        removeESP(player)
+    end
+    MarkedPlayers = {}
+end
 
--- Aimbot
+-- Smooth Aimbot Function
+local function smoothAim(targetPosition)
+    local currentCFrame = camera.CFrame
+    local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPosition)
+    local newCFrame = currentCFrame:Lerp(targetCFrame, AimSmoothness)
+    camera.CFrame = newCFrame
+end
+
+-- Main Tab: Toggle Aimbot
 MainTab:CreateButton({
     Name = "Toggle Aimbot",
     Callback = function()
         AimEnabled = not AimEnabled
         if AimEnabled then
-            AimConn = RunService.RenderStepped:Connect(function()
-                local tgt = getClosest()
-                if tgt then
-                    smoothAim(predict(tgt.Character.Head.Position))
+            AimConn = RunService.Heartbeat:Connect(function()
+                local target = getClosestPlayerInFOV()
+                if target and target.Character then
+                    local parts = getCharacterParts(target.Character)
+                    if parts.head then
+                        smoothAim(parts.head.Position)
+                    end
                 end
             end)
-            Rayfield:Notify({Title="Aimbot",Content="Enabled",Duration=3})
+            Rayfield:Notify({Title = "Aimbot", Content = "Enabled", Duration = 3})
         else
-            if AimConn then AimConn:Disconnect() AimConn=nil end
-            Rayfield:Notify({Title="Aimbot",Content="Disabled",Duration=3})
+            if AimConn then 
+                AimConn:Disconnect()
+                AimConn = nil
+            end
+            Rayfield:Notify({Title = "Aimbot", Content = "Disabled", Duration = 3})
         end
     end
 })
 
--- Silent Aim
+-- Main Tab: Toggle Silent Aim
 MainTab:CreateButton({
     Name = "Toggle Silent Aim",
     Callback = function()
         SilentAimEnabled = not SilentAimEnabled
-        Rayfield:Notify({Title="Silent Aim",Content=SilentAimEnabled and "Enabled" or "Disabled",Duration=3})
+        Rayfield:Notify({Title = "Silent Aim", Content = SilentAimEnabled and "Enabled" or "Disabled", Duration = 3})
     end
 })
 
--- FOV Circle Toggle
+-- Main Tab: FOV Circle Toggle
 MainTab:CreateToggle({
     Name = "FOV Circle",
     CurrentValue = false,
     Flag = "FOVCircleToggle",
-    Callback = function(v)
-        FOVCircleEnabled = v
-        if v then
-            FOVConn = RunService.RenderStepped:Connect(updateFOVCircle)
+    Callback = function(value)
+        FOVCircleEnabled = value
+        if value and FOVCircle then
+            FOVConn = RunService.Heartbeat:Connect(updateFOVCircle)
         else
-            if FOVConn then FOVConn:Disconnect() FOVConn=nil end
-            if FOVCircle then FOVCircle.Visible=false end
+            if FOVConn then
+                FOVConn:Disconnect()
+                FOVConn = nil
+            end
+            if FOVCircle then
+                FOVCircle.Visible = false
+            end
         end
-        Rayfield:Notify({Title="FOV Circle",Content=v and "Enabled" or "Disabled",Duration=3})
+        Rayfield:Notify({Title = "FOV Circle", Content = value and "Enabled" or "Disabled", Duration = 3})
     end
 })
 
--- FOV Size Slider
+-- Main Tab: FOV Size Slider
 MainTab:CreateSlider({
     Name = "FOV Size",
-    Range = {50,500},
+    Range = {50, 500},
     Increment = 10,
     Suffix = "px",
     CurrentValue = 150,
     Flag = "FOVSizeSlider",
-    Callback = function(v)
-        FOVSize = v
-        if FOVCircle then FOVCircle.Radius=v end
+    Callback = function(value)
+        FOVSize = value
+        if FOVCircle then
+            FOVCircle.Radius = value
+        end
     end
 })
 
--- Aim Smoothness Slider
+-- Main Tab: Aim Smoothness Slider
 MainTab:CreateSlider({
     Name = "Aim Smoothness",
-    Range = {0.01,1},
+    Range = {0.01, 1},
     Increment = 0.01,
     Suffix = "",
     CurrentValue = 0.1,
     Flag = "AimSmoothnessSlider",
-    Callback = function(v)
-        AimSmoothness = v
-        Rayfield:Notify({Title="Smoothness",Content=string.format("%.2f",v),Duration=2})
+    Callback = function(value)
+        AimSmoothness = value
+        Rayfield:Notify({Title = "Smoothness", Content = tostring(value), Duration = 2})
     end
 })
 
--- No Recoil Toggle
+-- Main Tab: No Recoil Toggle
 MainTab:CreateToggle({
     Name = "No Recoil",
     CurrentValue = false,
     Flag = "NoRecoilToggle",
-    Callback = function(v)
-        NoRecoilEnabled = v
-        Rayfield:Notify({Title="No Recoil",Content=v and "Enabled" or "Disabled",Duration=3})
+    Callback = function(value)
+        NoRecoilEnabled = value
+        Rayfield:Notify({Title = "No Recoil", Content = value and "Enabled" or "Disabled", Duration = 2})
     end
 })
 
--- Settings Tab
+-- Silent Aim Hook
+local function performSilentAim()
+    if SilentAimEnabled then
+        local target = getClosestPlayerInFOV()
+        if target and target.Character then
+            local parts = getCharacterParts(target.Character)
+            if parts.head then
+                local oldCFrame = camera.CFrame
+                camera.CFrame = CFrame.lookAt(oldCFrame.Position, parts.head.Position)
+                task.wait()
+                camera.CFrame = oldCFrame
+            end
+        end
+    end
+end
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        spawn(performSilentAim)
+    end
+end)
 
--- ESP Toggle
+-- Settings Tab: Toggle ESP
 SettingsTab:CreateButton({
     Name = "Toggle ESP",
     Callback = function()
         ESPEnabled = not ESPEnabled
         if ESPEnabled then
-            ESPConn = RunService.RenderStepped:Connect(function()
-                for _,pl in pairs(Players:GetPlayers()) do
-                    if isValid(pl) then applyESP(pl) elseif MarkedPlayers[pl] then removeESP(pl) end
+            ESPConn = RunService.Heartbeat:Connect(function()
+                for _, player in pairs(Players:GetPlayers()) do
+                    if isValidTarget(player) and not MarkedPlayers[player] then
+                        applyESP(player)
+                    elseif not isValidTarget(player) and MarkedPlayers[player] then
+                        removeESP(player)
+                    end
                 end
             end)
-            Rayfield:Notify({Title="ESP",Content="Enabled",Duration=3})
+            Rayfield:Notify({Title = "ESP", Content = "Enabled", Duration = 3})
         else
-            if ESPConn then ESPConn:Disconnect() ESPConn=nil end
-            clearESP()
-            Rayfield:Notify({Title="ESP",Content="Disabled",Duration=3})
+            if ESPConn then 
+                ESPConn:Disconnect()
+                ESPConn = nil
+            end
+            removeAllESP()
+            Rayfield:Notify({Title = "ESP", Content = "Disabled", Duration = 3})
         end
     end
 })
 
--- Team Check Toggle
+-- Settings Tab: Team Check Toggle
 SettingsTab:CreateToggle({
     Name = "Team Check",
     CurrentValue = false,
     Flag = "TeamCheckToggle",
-    Callback = function(v)
-        TeamCheckEnabled = v
-        clearESP()
-        Rayfield:Notify({Title="Team Check",Content=v and "On" or "Off",Duration=2})
+    Callback = function(value)
+        TeamCheckEnabled = value
+        if ESPEnabled then
+            removeAllESP()
+        end
+        Rayfield:Notify({Title = "Team Check", Content = value and "On" or "Off", Duration = 2})
     end
 })
 
--- ESP Color Picker
+-- Settings Tab: ESP Color Picker
 SettingsTab:CreateColorPicker({
     Name = "ESP Color",
     Color = ESPColor,
     Flag = "ESPColorPicker",
-    Callback = function(v)
-        ESPColor = v
-        for pl in pairs(MarkedPlayers) do
-            local h = pl.Character and pl.Character:FindFirstChild("ZnfproESP")
-            if h then h.FillColor=v; h.OutlineColor=v end
+    Callback = function(value)
+        ESPColor = value
+        for player in pairs(MarkedPlayers) do
+            if player.Character then
+                local highlight = player.Character:FindFirstChild("ZnfproESP")
+                if highlight then
+                    highlight.FillColor = value
+                    highlight.OutlineColor = value
+                end
+            end
         end
     end
 })
 
--- FOV Color Picker
+-- Settings Tab: FOV Circle Color Picker
 SettingsTab:CreateColorPicker({
     Name = "FOV Color",
     Color = FOVColor,
     Flag = "FOVColorPicker",
-    Callback = function(v)
-        FOVColor = v
-        if FOVCircle then FOVCircle.Color=v end
+    Callback = function(value)
+        FOVColor = value
+        if FOVCircle then 
+            FOVCircle.Color = value 
+        end
     end
 })
 
@@ -337,37 +390,89 @@ BypassTab:CreateButton({
     Name = "Universal Bypass",
     Callback = function()
         pcall(function()
-            for _,gc in pairs(getgc(true)) do
-                if type(gc)=="table" and rawget(gc,"Detected") then
-                    rawset(gc,"Detected",function() return false end)
+            for _, v in pairs(getgc(true)) do
+                if type(v) == "table" and rawget(v, "Detected") then
+                    rawset(v, "Detected", function() return false end)
                 end
             end
         end)
-        Rayfield:Notify({Title="Bypass",Content="Applied",Duration=3})
+        Rayfield:Notify({Title = "Bypass", Content = "Universal bypass applied", Duration = 3})
     end
 })
+
 BypassTab:CreateButton({
     Name = "Speed Hack",
     Callback = function()
-        local hr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if hr then hr.WalkSpeed = 50 end
-        Rayfield:Notify({Title="Speed",Content="WalkSpeed=50",Duration=3})
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 50
+            Rayfield:Notify({Title = "Speed", Content = "Speed increased to 50", Duration = 3})
+        end
     end
 })
+
 BypassTab:CreateButton({
     Name = "Jump Power",
     Callback = function()
-        local hr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if hr then hr.JumpPower = 100 end
-        Rayfield:Notify({Title="Jump",Content="JumpPower=100",Duration=3})
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = 100
+            Rayfield:Notify({Title = "Jump", Content = "Jump power increased", Duration = 3})
+        end
     end
 })
 
--- Cleanup
-Players.PlayerRemoving:Connect(removeESP)
+-- Bypass Tab: Walk Speed Slider
+BypassTab:CreateSlider({
+    Name = "Walk Speed",
+    Range = {16, 100},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.WalkSpeed) or 16,
+    Flag = "WalkSpeedSlider",
+    Callback = function(value)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = value
+            Rayfield:Notify({Title = "Walk Speed", Content = tostring(value), Duration = 2})
+        end
+    end
+})
 
--- Init
+-- Bypass Tab: Jump Power Slider
+BypassTab:CreateSlider({
+    Name = "Jump Power",
+    Range = {50, 200},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.JumpPower) or 50,
+    Flag = "JumpPowerSlider",
+    Callback = function(value)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = value
+            Rayfield:Notify({Title = "Jump Power", Content = tostring(value), Duration = 2})
+        end
+    end
+})
+
+-- Cleanup Events
+Players.PlayerRemoving:Connect(function(player)
+    if MarkedPlayers[player] then 
+        removeESP(player) 
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterRemoving:Connect(function()
+        if MarkedPlayers[player] then
+            MarkedPlayers[player] = nil
+        end
+    end)
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    camera = workspace.CurrentCamera
+end)
+
+-- Initialize
 task.wait(1)
 updateFOVCircle()
-print("ZnfPro Universal GUI loaded!")
-```
+print("ZnfPro Universal GUI loaded successfully!")
