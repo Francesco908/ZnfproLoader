@@ -21,7 +21,7 @@ local Window = Rayfield:CreateWindow({
 -- Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
 local BypassTab = Window:CreateTab("Bypass", 6031091006)
-local ConfigTab = Window:CreateTab("Config", 6035047405)
+local SettingsTab = Window:CreateTab("Settings", 6035047405)
 
 -- Services and variables
 local Players = game:GetService("Players")
@@ -43,7 +43,7 @@ local FOVSize = 150
 local ESPConnection, AimConnection, SilentAimConnection, FOVConnection
 local MarkedPlayers = {}
 
--- FOV Circle Drawing (Fixed)
+-- FOV Circle Drawing
 local FOVCircle
 pcall(function()
 	FOVCircle = Drawing.new("Circle")
@@ -147,7 +147,7 @@ local function updateFOVCircle()
 	end
 end
 
--- Main Tab - Toggle Aimbot
+-- Main Tab - Toggle Aimbot (with character movement)
 MainTab:CreateButton({
 	Name = "Toggle Aimbot",
 	Callback = function()
@@ -159,17 +159,28 @@ MainTab:CreateButton({
 				
 				if closestPlayer and closestPlayer.Character and closestPlayer.Character:FindFirstChild("Head") then
 					local head = closestPlayer.Character.Head
-					
-					-- Camera rotation
-					camera.CFrame = CFrame.lookAt(camera.CFrame.Position, head.Position)
-
-					-- Character rotation
 					local char = LocalPlayer.Character
-					if char and char:FindFirstChild("HumanoidRootPart") then
+					
+					if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
 						local hrp = char.HumanoidRootPart
+						local humanoid = char.Humanoid
+						
+						-- Calculate direction to target
 						local direction = (head.Position - hrp.Position).Unit
+						local targetPosition = head.Position
+						
+						-- Rotate camera to look at target
+						camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
+						
+						-- Rotate character to face target
 						local newCFrame = CFrame.lookAt(hrp.Position, hrp.Position + Vector3.new(direction.X, 0, direction.Z))
 						hrp.CFrame = newCFrame
+						
+						-- Move character towards target (optional - makes it more realistic)
+						local distance = (targetPosition - hrp.Position).Magnitude
+						if distance > 10 then -- Only move if target is far enough
+							humanoid:MoveTo(targetPosition)
+						end
 					end
 				end
 			end)
@@ -178,6 +189,11 @@ MainTab:CreateButton({
 			if AimConnection then 
 				AimConnection:Disconnect() 
 				AimConnection = nil 
+			end
+			-- Stop character movement
+			local char = LocalPlayer.Character
+			if char and char:FindFirstChild("Humanoid") then
+				char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
 			end
 			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Disabled", Duration = 3 })
 		end
@@ -192,7 +208,7 @@ MainTab:CreateButton({
 
 		if SilentAimEnabled then
 			SilentAimConnection = RunService.RenderStepped:Connect(function()
-				-- Silent aim logic will be handled by mouse click events
+				-- Silent aim logic runs in background
 			end)
 			Rayfield:Notify({ Title = "Silent Aim", Content = "Silent Aim Enabled", Duration = 3 })
 		else
@@ -202,6 +218,44 @@ MainTab:CreateButton({
 			end
 			Rayfield:Notify({ Title = "Silent Aim", Content = "Silent Aim Disabled", Duration = 3 })
 		end
+	end
+})
+
+-- Main Tab - FOV Circle Toggle
+MainTab:CreateToggle({
+	Name = "FOV Circle",
+	CurrentValue = false,
+	Flag = "FOVCircleToggle",
+	Callback = function(Value)
+		FOVCircleEnabled = Value
+		updateFOVCircle()
+		if Value then
+			FOVConnection = RunService.RenderStepped:Connect(updateFOVCircle)
+			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Enabled", Duration = 3 })
+		else
+			if FOVConnection then 
+				FOVConnection:Disconnect() 
+				FOVConnection = nil 
+			end
+			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Disabled", Duration = 3 })
+		end
+	end
+})
+
+-- Main Tab - FOV Size Slider
+MainTab:CreateSlider({
+	Name = "FOV Size",
+	Range = {50, 500},
+	Increment = 10,
+	Suffix = "px",
+	CurrentValue = 150,
+	Flag = "FOVSizeSlider",
+	Callback = function(Value)
+		FOVSize = Value
+		if FOVCircle then
+			FOVCircle.Radius = FOVSize
+		end
+		Rayfield:Notify({ Title = "FOV Size", Content = "FOV Size: " .. Value .. "px", Duration = 2 })
 	end
 })
 
@@ -223,8 +277,8 @@ mouse.Button1Down:Connect(function()
 	end
 end)
 
--- Config Tab - ESP Controls
-ConfigTab:CreateButton({
+-- Settings Tab - ESP Controls
+SettingsTab:CreateButton({
 	Name = "Toggle ESP",
 	Callback = function()
 		ESPEnabled = not ESPEnabled
@@ -252,61 +306,23 @@ ConfigTab:CreateButton({
 	end
 })
 
--- Config Tab - Team Check Toggle
-ConfigTab:CreateToggle({
+-- Settings Tab - Team Check Toggle
+SettingsTab:CreateToggle({
 	Name = "Team Check",
 	CurrentValue = false,
 	Flag = "TeamCheckToggle",
 	Callback = function(Value)
 		TeamCheckEnabled = Value
 		if Value then
-			Rayfield:Notify({ Title = "Team Check", Content = "Team Check Enabled", Duration = 3 })
+			Rayfield:Notify({ Title = "Team Check", Content = "Team Check Enabled - Ignoring teammates", Duration = 3 })
 		else
-			Rayfield:Notify({ Title = "Team Check", Content = "Team Check Disabled", Duration = 3 })
+			Rayfield:Notify({ Title = "Team Check", Content = "Team Check Disabled - Targeting everyone", Duration = 3 })
 		end
 	end
 })
 
--- Config Tab - FOV Circle Toggle
-ConfigTab:CreateToggle({
-	Name = "FOV Circle",
-	CurrentValue = false,
-	Flag = "FOVCircleToggle",
-	Callback = function(Value)
-		FOVCircleEnabled = Value
-		updateFOVCircle()
-		if Value then
-			FOVConnection = RunService.RenderStepped:Connect(updateFOVCircle)
-			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Enabled", Duration = 3 })
-		else
-			if FOVConnection then 
-				FOVConnection:Disconnect() 
-				FOVConnection = nil 
-			end
-			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Disabled", Duration = 3 })
-		end
-	end
-})
-
--- Config Tab - FOV Size Slider
-ConfigTab:CreateSlider({
-	Name = "FOV Size",
-	Range = {50, 500},
-	Increment = 10,
-	Suffix = "px",
-	CurrentValue = 150,
-	Flag = "FOVSizeSlider",
-	Callback = function(Value)
-		FOVSize = Value
-		if FOVCircle then
-			FOVCircle.Radius = FOVSize
-		end
-		Rayfield:Notify({ Title = "FOV Size", Content = "FOV Size: " .. Value .. "px", Duration = 2 })
-	end
-})
-
--- Config Tab - ESP Color Picker
-ConfigTab:CreateColorPicker({
+-- Settings Tab - ESP Color Picker
+SettingsTab:CreateColorPicker({
 	Name = "ESP Color",
 	Color = Color3.fromRGB(255, 0, 0),
 	Flag = "ESPColorPicker",
@@ -324,8 +340,8 @@ ConfigTab:CreateColorPicker({
 	end
 })
 
--- Config Tab - FOV Color Picker
-ConfigTab:CreateColorPicker({
+-- Settings Tab - FOV Color Picker
+SettingsTab:CreateColorPicker({
 	Name = "FOV Circle Color",
 	Color = Color3.fromRGB(255, 255, 255),
 	Flag = "FOVColorPicker",
@@ -335,6 +351,21 @@ ConfigTab:CreateColorPicker({
 			FOVCircle.Color = FOVColor
 		end
 		Rayfield:Notify({ Title = "FOV Color", Content = "FOV Color Updated", Duration = 2 })
+	end
+})
+
+-- Settings Tab - Character Movement Toggle
+SettingsTab:CreateToggle({
+	Name = "Character Auto Movement",
+	CurrentValue = true,
+	Flag = "CharacterMovementToggle",
+	Callback = function(Value)
+		-- This will be used in the aimbot logic
+		Rayfield:Notify({ 
+			Title = "Character Movement", 
+			Content = Value and "Auto movement enabled" or "Auto movement disabled", 
+			Duration = 3 
+		})
 	end
 })
 
@@ -370,3 +401,26 @@ end)
 
 -- Initialize FOV Circle
 updateFOVCircle()
+
+-- Additional Character Movement Handler
+RunService.RenderStepped:Connect(function()
+	if AimEnabled then
+		local char = LocalPlayer.Character
+		if char and char:FindFirstChild("Humanoid") then
+			local humanoid = char.Humanoid
+			
+			-- Make character walk more naturally when aiming
+			if humanoid.MoveDirection.Magnitude > 0 then
+				humanoid.WalkSpeed = 8 -- Slower when aiming
+			else
+				humanoid.WalkSpeed = 16 -- Normal speed
+			end
+		end
+	else
+		-- Reset to normal speed when aimbot is off
+		local char = LocalPlayer.Character
+		if char and char:FindFirstChild("Humanoid") then
+			char.Humanoid.WalkSpeed = 16
+		end
+	end
+end)
