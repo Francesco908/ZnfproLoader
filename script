@@ -1,7 +1,7 @@
 -- Rayfield UI Loader
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
--- Create the main window with KeySystem enabled
+-- Create the window with KeySystem
 local Window = Rayfield:CreateWindow({
 	Name = "ᴢɴꜰᴘʀᴏ Utility GUI",
 	LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
@@ -15,99 +15,136 @@ local Window = Rayfield:CreateWindow({
 		FileName = "ZnfproLoaderKey",
 		SaveKey = true,
 		GrabKeyFromSite = false,
-		Key = {"FREEKEYFORALL"} -- ✅ Your working key
+		Key = {"FREEKEYFORALL"}
 	}
 })
 
--- Create the main tab
+-- Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
+local BypassTab = Window:CreateTab("Bypass", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
--- Variables
-local speedEnabled = false
-local jumpEnabled = false
-local defaultSpeed = 16
-local defaultJump = 50
-local customSpeed = 60
-local customJump = 100
-
--- Button to toggle WalkSpeed
+-- Aimbot
 MainTab:CreateButton({
-	Name = "Toggle WalkSpeed",
+	Name = "Enable Aimbot (ᴢɴꜰᴘʀᴏ)",
 	Callback = function()
-		local player = game.Players.LocalPlayer
-		local character = player.Character or player.CharacterAdded:Wait()
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+		local Mouse = LocalPlayer:GetMouse()
 
-		if humanoid then
-			speedEnabled = not speedEnabled
-			humanoid.WalkSpeed = speedEnabled and customSpeed or defaultSpeed
-
-			Rayfield:Notify({
-				Title = "WalkSpeed",
-				Content = speedEnabled and "🏃 Speed Enabled!" or "🚶 Normal Speed.",
-				Duration = 3
-			})
+		local function getClosestEnemy()
+			local maxDist = math.huge
+			local closest = nil
+			for _, player in pairs(Players:GetPlayers()) do
+				if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team then
+					local char = player.Character
+					if char and char:FindFirstChild("Head") then
+						local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(char.Head.Position)
+						if onScreen then
+							local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+							if dist < maxDist then
+								maxDist = dist
+								closest = char.Head
+							end
+						end
+					end
+				end
+			end
+			return closest
 		end
+
+		local aiming = true
+		game:GetService("RunService").RenderStepped:Connect(function()
+			if aiming then
+				local target = getClosestEnemy()
+				if target then
+					workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
+				end
+			end
+		end)
+
+		Rayfield:Notify({
+			Title = "Aimbot",
+			Content = "Aimbot Enabled",
+			Duration = 3
+		})
 	end
 })
 
--- Button to toggle JumpPower
+-- Auto Aim (fake, shows crosshair)
 MainTab:CreateButton({
-	Name = "Toggle JumpPower",
+	Name = "Fake Auto Aim (crosshair)",
 	Callback = function()
-		local player = game.Players.LocalPlayer
-		local character = player.Character or player.CharacterAdded:Wait()
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local cross = Instance.new("Frame")
+		cross.Size = UDim2.new(0, 10, 0, 10)
+		cross.Position = UDim2.new(0.5, -5, 0.5, -5)
+		cross.BackgroundColor3 = Color3.new(1, 0, 0)
+		cross.BorderSizePixel = 0
+		cross.Name = "ZnfCrosshair"
+		cross.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
-		if humanoid then
-			jumpEnabled = not jumpEnabled
-			humanoid.UseJumpPower = true
-			humanoid.JumpPower = jumpEnabled and customJump or defaultJump
-
-			Rayfield:Notify({
-				Title = "JumpPower",
-				Content = jumpEnabled and "🦘 Jump Boost Enabled!" or "🧍 Normal Jump.",
-				Duration = 3
-			})
-		end
+		Rayfield:Notify({
+			Title = "Auto Aim",
+			Content = "Fake crosshair enabled",
+			Duration = 3
+		})
 	end
 })
 
--- Slider to adjust WalkSpeed
-MainTab:CreateSlider({
-	Name = "Set WalkSpeed",
-	Range = {0, 200},
-	Increment = 1,
-	Suffix = "Speed",
-	CurrentValue = customSpeed,
-	Flag = "SpeedSlider",
-	Callback = function(Value)
-		customSpeed = Value
-		local player = game.Players.LocalPlayer
-		local character = player.Character or player.CharacterAdded:Wait()
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid and speedEnabled then
-			humanoid.WalkSpeed = customSpeed
-		end
-	end,
+-- Fake Bypass Buttons
+BypassTab:CreateButton({
+	Name = "Bypass Map",
+	Callback = function()
+		Rayfield:Notify({
+			Title = "Bypass",
+			Content = "Map Bypass Activated (Fake)",
+			Duration = 3
+		})
+	end
 })
 
--- Slider to adjust JumpPower
-MainTab:CreateSlider({
-	Name = "Set JumpPower",
-	Range = {0, 300},
-	Increment = 1,
-	Suffix = "Power",
-	CurrentValue = customJump,
-	Flag = "JumpSlider",
-	Callback = function(Value)
-		customJump = Value
-		local player = game.Players.LocalPlayer
-		local character = player.Character or player.CharacterAdded:Wait()
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid and jumpEnabled then
-			humanoid.JumpPower = customJump
-		end
-	end,
+BypassTab:CreateButton({
+	Name = "Bypass AntiCheat",
+	Callback = function()
+		Rayfield:Notify({
+			Title = "Bypass",
+			Content = "Anticheat Bypass Activated (Fake)",
+			Duration = 3
+		})
+	end
+})
+
+-- ESP (Simple Box)
+SettingsTab:CreateButton({
+	Name = "Enable Box ESP",
+	Callback = function()
+		local Players = game:GetService("Players")
+		local RunService = game:GetService("RunService")
+		local camera = workspace.CurrentCamera
+
+		RunService.RenderStepped:Connect(function()
+			for _, player in pairs(Players:GetPlayers()) do
+				if player ~= Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+					if not player.Character:FindFirstChild("ESPBox") then
+						local box = Instance.new("BoxHandleAdornment")
+						box.Name = "ESPBox"
+						box.Adornee = player.Character
+						box.AlwaysOnTop = true
+						box.ZIndex = 5
+						box.Size = Vector3.new(4, 6, 1)
+						box.Color3 = Color3.fromRGB(255, 0, 0)
+						box.Transparency = 0.5
+						box.Parent = player.Character
+					end
+				end
+			end
+		end)
+
+		Rayfield:Notify({
+			Title = "ESP",
+			Content = "Box ESP Enabled",
+			Duration = 3
+		})
+	end
 })
 
