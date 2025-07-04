@@ -1,4 +1,4 @@
--- ZnfPro Universal Gaming Utility - Aimbot & ESP Fix
+-- ZnfPro Universal Gaming Utility - Final Fix
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
@@ -20,8 +20,8 @@ local Window = Rayfield:CreateWindow({
         FileName = "ZnfproLoaderKey",
         SaveKey = true,
         GrabKeyFromSite = false,
-        Key = {"FREEKEYFORALL"}
-    }
+        Key = {"FREEKEYFORALL"},
+    },
 })
 
 -- Services
@@ -31,11 +31,12 @@ local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local camera           = workspace.CurrentCamera
 
--- Variables
+-- State
 local ESPColor         = Color3.fromRGB(255, 0, 0)
 local FOVColor         = Color3.fromRGB(255, 255, 255)
 local ESPEnabled       = false
-local AimMode          = "Regular"        -- "Regular" o "Silent"
+local AimEnabled       = false
+local SilentAimEnabled = false
 local TeamCheckEnabled = false
 local FOVSize          = 150
 local AimSmoothness    = 0.1
@@ -43,42 +44,49 @@ local ESPConn, AimConn
 
 local MarkedPlayers = {}
 
--- Helper: parti del character
-local function getCharacterParts(character)
-    if not character then return {} end
+-- FOV Circle (Drawing)
+local FOVCircle
+if Drawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Filled        = false
+    FOVCircle.Transparency  = 0.5
+    FOVCircle.Thickness     = 2
+    FOVCircle.NumSides      = 64
+    FOVCircle.ZIndex        = 2
+end
+
+-- Helpers
+local function getCharacterParts(c)
+    if not c then return {} end
     return {
-        head = character:FindFirstChild("Head"),
-        humanoid = character:FindFirstChild("Humanoid"),
+        head     = c:FindFirstChild("Head"),
+        humanoid = c:FindFirstChild("Humanoid"),
     }
 end
 
--- Verifica target valido
-local function isValidTarget(player)
-    if player == LocalPlayer or not player.Character then return false end
-    local parts = getCharacterParts(player.Character)
+local function isValidTarget(p)
+    if p == LocalPlayer or not p.Character then return false end
+    local parts = getCharacterParts(p.Character)
     if not parts.head or not parts.humanoid or parts.humanoid.Health <= 0 then
         return false
     end
-    if TeamCheckEnabled then
-        local pt, lt = player.Team, LocalPlayer.Team
-        if pt and lt and pt == lt then return false end
+    if TeamCheckEnabled and p.Team == LocalPlayer.Team then
+        return false
     end
     return true
 end
 
--- Trova il player più vicino al centro (testa) entro FOVSize
 local function getClosestPlayerInFOV()
-    local closest, minDist = nil, FOVSize
+    local closest, minD = nil, FOVSize
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if isValidTarget(player) then
-            local head = getCharacterParts(player.Character).head
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isValidTarget(p) then
+            local head = getCharacterParts(p.Character).head
             local pos, onScreen = camera:WorldToViewportPoint(head.Position)
             if onScreen and pos.Z > 0 then
-                local screenPos = Vector2.new(pos.X, pos.Y)
-                local dist = (screenPos - center).Magnitude
-                if dist < minDist then
-                    minDist, closest = dist, player
+                local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if d < minD then
+                    minD, closest = d, p
                 end
             end
         end
@@ -87,57 +95,60 @@ local function getClosestPlayerInFOV()
 end
 
 -- ESP
-local function applyESP(player)
-    if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
-        pcall(function()
-            local h = Instance.new("Highlight", player.Character)
-            h.Name              = "ZnfproESP"
-            h.FillColor         = ESPColor
-            h.FillTransparency  = 0.25
-            h.OutlineColor      = ESPColor
-            h.OutlineTransparency = 0
-
-            local bg = Instance.new("BillboardGui", player.Character)
-            bg.Name         = "ZnfproESPText"
-            bg.Adornee      = getCharacterParts(player.Character).head
-            bg.Size         = UDim2.new(0,100,0,50)
-            bg.StudsOffset  = Vector3.new(0,2,0)
-            bg.AlwaysOnTop  = true
-
-            local tl = Instance.new("TextLabel", bg)
-            tl.Size           = UDim2.new(1,0,1,0)
-            tl.BackgroundTransparency = 1
-            tl.Text           = player.Name
-            tl.TextColor3     = ESPColor
-            tl.TextScaled     = true
-            tl.Font           = Enum.Font.SourceSansBold
-
-            MarkedPlayers[player] = true
-        end)
-    end
+local function applyESP(p)
+    if not p.Character or p.Character:FindFirstChild("ZnfproESP") then return end
+    pcall(function()
+        local h = Instance.new("Highlight", p.Character)
+        h.Name             = "ZnfproESP"
+        h.FillColor        = ESPColor
+        h.FillTransparency = 0.25
+        h.OutlineColor     = ESPColor
+        h.OutlineTransparency = 0
+        local bg = Instance.new("BillboardGui", p.Character)
+        bg.Name        = "ZnfproESPText"
+        bg.Adornee     = getCharacterParts(p.Character).head
+        bg.Size        = UDim2.new(0,100,0,50)
+        bg.StudsOffset = Vector3.new(0,2,0)
+        bg.AlwaysOnTop = true
+        local tl = Instance.new("TextLabel", bg)
+        tl.Size                   = UDim2.new(1,0,1,0)
+        tl.BackgroundTransparency = 1
+        tl.Text                   = p.Name
+        tl.TextColor3             = ESPColor
+        tl.TextScaled             = true
+        tl.Font                   = Enum.Font.SourceSansBold
+        MarkedPlayers[p] = true
+    end)
 end
 
-local function removeESP(player)
-    if player.Character then
-        pcall(function()
-            local h  = player.Character:FindFirstChild("ZnfproESP")
-            local bg = player.Character:FindFirstChild("ZnfproESPText")
-            if h  then h:Destroy()  end
-            if bg then bg:Destroy() end
-        end)
-    end
-    MarkedPlayers[player] = nil
+local function removeESP(p)
+    if not p.Character then return end
+    pcall(function()
+        local h  = p.Character:FindFirstChild("ZnfproESP")
+        local bg = p.Character:FindFirstChild("ZnfproESPText")
+        if h  then h:Destroy() end
+        if bg then bg:Destroy() end
+    end)
+    MarkedPlayers[p] = nil
 end
 
 -- Smooth head aim
-local function smoothHeadAim(targetPos)
-    local camC0 = camera.CFrame
-    local desired = CFrame.lookAt(camC0.Position, targetPos + Vector3.new(0,0,0)) 
-    camera.CFrame = camC0:Lerp(desired, AimSmoothness)
+local function smoothHeadAim(pos)
+    local c0 = camera.CFrame
+    local desired = CFrame.lookAt(c0.Position, pos)
+    camera.CFrame = c0:Lerp(desired, AimSmoothness)
 end
 
--- RenderLoop: Aimbot & ESP
+-- Main render loop
 RunService.RenderStepped:Connect(function()
+    -- Draw FOV circle
+    if FOVCircle then
+        FOVCircle.Visible       = true
+        FOVCircle.Position      = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+        FOVCircle.Radius        = FOVSize
+        FOVCircle.Color         = FOVColor
+    end
+
     -- ESP
     if ESPEnabled then
         for _, p in ipairs(Players:GetPlayers()) do
@@ -149,16 +160,18 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Aimbot
+    -- Aimbot / Silent Aim
     local target = getClosestPlayerInFOV()
-    if target then
-        local head = getCharacterParts(target.Character).head
-        if AimMode == "Regular" then
-            smoothHeadAim(head.Position)
-        elseif AimMode == "Silent" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            -- Silent: mossa veloce e poi reset
+    if target and target.Character then
+        local headPos = getCharacterParts(target.Character).head.Position
+        -- Legit Aimbot
+        if AimEnabled then
+            smoothHeadAim(headPos)
+        end
+        -- Silent Aim
+        if SilentAimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
             local old = camera.CFrame
-            camera.CFrame = CFrame.lookAt(old.Position, head.Position)
+            camera.CFrame = CFrame.lookAt(old.Position, headPos)
             task.wait()
             camera.CFrame = old
         end
@@ -170,19 +183,43 @@ local MainTab     = Window:CreateTab("Main",     4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 local BypassTab   = Window:CreateTab("Bypass",   6031091006)
 
--- Aim Mode switch
-MainTab:CreateDropdown({
-    Name     = "Aim Mode",
-    Options  = {"Regular", "Silent"},
-    Current  = "Regular",
-    Flag     = "AimModeSwitch",
-    Callback = function(v)
-        AimMode = v
-        Rayfield:Notify({ Title = "Aim Mode", Content = v.." Aim", Duration = 2 })
-    end
+-- MainTab controls
+MainTab:CreateToggle({
+    Name         = "Aimbot (Legit)",
+    CurrentValue = false,
+    Callback     = function(v)
+        AimEnabled = v
+        Rayfield:Notify({Title="Aimbot",Content=v and "Enabled" or "Disabled",Duration=2})
+    end,
 })
 
--- Toggle ESP
+MainTab:CreateToggle({
+    Name         = "Silent Aim (Legit)",
+    CurrentValue = false,
+    Callback     = function(v)
+        SilentAimEnabled = v
+        Rayfield:Notify({Title="Silent Aim",Content=v and "Enabled" or "Disabled",Duration=2})
+    end,
+})
+
+MainTab:CreateSlider({
+    Name         = "FOV Size",
+    Range        = {50,500},
+    Increment    = 10,
+    Suffix       = "px",
+    CurrentValue = FOVSize,
+    Callback     = function(v) FOVSize = v end,
+})
+
+MainTab:CreateSlider({
+    Name         = "Aim Smoothness",
+    Range        = {0.01,1},
+    Increment    = 0.01,
+    CurrentValue = AimSmoothness,
+    Callback     = function(v) AimSmoothness = v end,
+})
+
+-- SettingsTab controls
 SettingsTab:CreateToggle({
     Name         = "ESP",
     CurrentValue = false,
@@ -191,69 +228,38 @@ SettingsTab:CreateToggle({
         if not v then
             for p in pairs(MarkedPlayers) do removeESP(p) end
         end
-        Rayfield:Notify({ Title = "ESP", Content = v and "Enabled" or "Disabled", Duration = 2 })
-    end
+        Rayfield:Notify({Title="ESP",Content=v and "Enabled" or "Disabled",Duration=2})
+    end,
 })
 
--- Team Check Toggle
+SettingsTab:CreateColorPicker({
+    Name    = "ESP Color",
+    Color   = ESPColor,
+    Callback= function(v) ESPColor = v end,
+})
+
 SettingsTab:CreateToggle({
     Name         = "Team Check",
     CurrentValue = false,
     Callback     = function(v)
         TeamCheckEnabled = v
-        Rayfield:Notify({ Title = "Team Check", Content = v and "On" or "Off", Duration = 2 })
-    end
+        Rayfield:Notify({Title="Team Check",Content=v and "On" or "Off",Duration=2})
+    end,
 })
 
--- FOV Size Slider
-SettingsTab:CreateSlider({
-    Name         = "FOV Size",
-    Range        = {50, 500},
-    Increment    = 10,
-    Suffix       = "px",
-    CurrentValue = FOVSize,
-    Callback     = function(v) FOVSize = v end
-})
-
--- Aim Smoothness Slider
-SettingsTab:CreateSlider({
-    Name         = "Aim Smoothness",
-    Range        = {0.01, 1},
-    Increment    = 0.01,
-    CurrentValue = AimSmoothness,
-    Callback     = function(v) AimSmoothness = v end
-})
-
--- ESP Color Picker
-SettingsTab:CreateColorPicker({
-    Name  = "ESP Color",
-    Color = ESPColor,
-    Callback = function(v)
-        ESPColor = v
-        for p in pairs(MarkedPlayers) do
-            local h  = p.Character and p.Character:FindFirstChild("ZnfproESP")
-            local bg = p.Character and p.Character:FindFirstChild("ZnfproESPText")
-            if h  then h.FillColor = v; h.OutlineColor = v end
-            if bg and bg:FindFirstChild("TextLabel") then
-                bg.TextLabel.TextColor3 = v
-            end
-        end
-    end
-})
-
--- Bypass Tab (resta invariato)
+-- BypassTab left as-is
 BypassTab:CreateButton({
-    Name = "Universal Bypass",
+    Name     = "Universal Bypass",
     Callback = function()
         pcall(function()
             for _, f in pairs(getgc(true)) do
-                if type(f) == "table" and rawget(f, "Detected") then
-                    rawset(f, "Detected", function() return false end)
+                if type(f)=="table" and rawget(f,"Detected") then
+                    rawset(f,"Detected",function() return false end)
                 end
             end
         end)
-        Rayfield:Notify({ Title = "Bypass", Content = "Applied", Duration = 2 })
-    end
+        Rayfield:Notify({Title="Bypass",Content="Applied",Duration=2})
+    end,
 })
 
-print("ZnfPro Universal GUI (fixed) loaded — AimMode:", AimMode)
+print("ZnfPro Universal GUI — final version loaded!")
