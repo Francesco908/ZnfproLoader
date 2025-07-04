@@ -25,7 +25,7 @@ local camera = workspace.CurrentCamera
 
 local ESPColor = Color3.fromRGB(255,0,0)
 local AimEnabled, NoRecoilEnabled, ESPEnabled, TeamCheckEnabled = false, false, false, false
-local FOVSize, AimSmoothness = 150, 0.1
+local FOVSize, AimSmoothness, PredictionStrength = 150, 0.15, 0.1
 local AimConn, ESPConn
 local Marked = {}
 
@@ -40,25 +40,39 @@ end
 local function isValid(player)
     if player == LocalPlayer or not player.Character then return false end
     local head, root, h = getParts(player.Character)
-    if not head or not h or h.Health <= 0 then return false end
-    if TeamCheckEnabled then
+    if not head or not root or not h or h.Health <= 0 then return false end
+    if TeamCheckEnabled and player.Team and LocalPlayer.Team then
         if player.Team == LocalPlayer.Team then return false end
     end
     return true
 end
 
+local function getDistance(pos1, pos2)
+    return (pos1 - pos2).Magnitude
+end
+
 local function closestInFOV()
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-    local best, dist = nil, math.huge
+    local best, bestDist = nil, math.huge
+    
     for _, p in pairs(Players:GetPlayers()) do
         if isValid(p) then
             local head = p.Character:FindFirstChild("Head")
             if head then
                 local pos, onScreen = camera:WorldToViewportPoint(head.Position)
-                if onScreen and pos.Z>0 then
-                    local delta = (Vector2.new(pos.X,pos.Y) - center).Magnitude
-                    if delta < dist and delta <= FOVSize then
-                        best, dist = p, delta
+                if onScreen and pos.Z > 0 then
+                    local screenPos = Vector2.new(pos.X, pos.Y)
+                    local distanceFromCenter = (screenPos - center).Magnitude
+                    
+                    -- Check if within FOV circle
+                    if distanceFromCenter <= FOVSize then
+                        -- Prioritize closer targets
+                        local worldDistance = getDistance(camera.CFrame.Position, head.Position)
+                        local priority = distanceFromCenter + (worldDistance * 0.01)
+                        
+                        if priority < bestDist then
+                            best, bestDist = p, priority
+                        end
                     end
                 end
             end
@@ -67,18 +81,32 @@ local function closestInFOV()
     return best
 end
 
--- Aimbot Logic: Aim at head with prediction & pcall safety
+-- Aimbot Logic: Improved prediction and smoothing
 local function doAim()
     pcall(function()
         local target = closestInFOV()
-        if target and target.Character then
-            local head, root = getParts(target.Character)
-            if head and root then
-                local predicted = head.Position + (root.Velocity * AimSmoothness)
-                local camC = camera.CFrame
-                camera.CFrame = camC:Lerp(CFrame.lookAt(camC.Position, predicted), AimSmoothness)
-            end
+        if not target or not target.Character then return end
+        
+        local head, root = getParts(target.Character)
+        if not head or not root then return end
+        
+        -- Calculate prediction based on velocity
+        local velocity = root.Velocity
+        local distance = getDistance(camera.CFrame.Position, head.Position)
+        local timeToTarget = distance / 1000 -- Adjust based on your game's bullet speed
+        
+        -- Apply prediction only if target is moving
+        local predictedPosition = head.Position
+        if velocity.Magnitude > 5 then -- Only predict if moving fast enough
+            predictedPosition = head.Position + (velocity * PredictionStrength * timeToTarget)
         end
+        
+        -- Smooth camera movement
+        local currentCFrame = camera.CFrame
+        local targetCFrame = CFrame.lookAt(currentCFrame.Position, predictedPosition)
+        
+        -- Apply smoothing
+        camera.CFrame = currentCFrame:Lerp(targetCFrame, AimSmoothness)
     end)
 end
 
@@ -101,16 +129,24 @@ end})
 
 -- Main: FOV & Smoothness
 Main:CreateSlider({ Name="FOV Size", Range={50,500}, Increment=10, Suffix="px", CurrentValue=FOVSize, Flag="FOVSlider", Callback=function(v) FOVSize=v end })
-Main:CreateSlider({ Name="Smoothness", Range={0.01,1}, Increment=0.01, CurrentValue=AimSmoothness, Flag="SmoothSlider", Callback=function(v) AimSmoothness=v end })
+Main:CreateSlider({ Name="Smoothness", Range={0.01,0.5}, Increment=0.01, CurrentValue=AimSmoothness, Flag="SmoothSlider", Callback=function(v) AimSmoothness=v end })
+Main:CreateSlider({ Name="Prediction", Range={0,0.5}, Increment=0.01, CurrentValue=PredictionStrength, Flag="PredictionSlider", Callback=function(v) PredictionStrength=v end })
 
--- Main: No Recoil
+-- Main: No Recoil (Improved)
 Main:CreateToggle({ Name="No Recoil", CurrentValue=false, Flag="RecoilToggle", Callback=function(val)
     NoRecoilEnabled = val
     if NoRecoilEnabled then
         pcall(function()
+            -- More comprehensive recoil hook
             for _,fn in pairs(getgc(true)) do
-                if type(fn)=="function" and debug.getinfo(fn).name:lower():find("recoil") then
-                    hookfunction(fn, function() end)
+                if type(fn)=="function" then
+                    local info = debug.getinfo(fn)
+                    if info and info.name then
+                        local name = info.name:lower()
+                        if name:find("recoil") or name:find("spread") or name:find("sway") then
+                            hookfunction(fn, function() return end)
+                        end
+                    end
                 end
             end
         end)
@@ -128,31 +164,57 @@ Settings:CreateToggle({ Name="ESP", CurrentValue=false, Flag="ESPToggle", Callba
         ESPConn = RunService.Heartbeat:Connect(function()
             for _,p in pairs(Players:GetPlayers()) do
                 if isValid(p) and not Marked[p] then
-                    -- apply highlight
-                    local h = Instance.new("Highlight"); h.Adornee=p.Character; h.FillColor=ESPColor; h.Parent=p.Character
-                    Marked[p]=h
+                    -- Apply highlight with better settings
+                    local h = Instance.new("Highlight")
+                    h.Adornee = p.Character
+                    h.FillColor = ESPColor
+                    h.OutlineColor = Color3.fromRGB(0,0,0)
+                    h.FillTransparency = 0.3
+                    h.OutlineTransparency = 0
+                    h.Parent = p.Character
+                    Marked[p] = h
                 elseif (not isValid(p)) and Marked[p] then
-                    Marked[p]:Destroy(); Marked[p]=nil
+                    Marked[p]:Destroy()
+                    Marked[p] = nil
                 end
             end
         end)
     else
-        for p,h in pairs(Marked) do h:Destroy(); Marked[p]=nil end
+        for p,h in pairs(Marked) do 
+            if h then h:Destroy() end
+            Marked[p] = nil 
+        end
     end
 end})
+
 Settings:CreateToggle({ Name="Team Check", CurrentValue=false, Flag="TeamToggle", Callback=function(v) TeamCheckEnabled=v end })
 Settings:CreateColorPicker({ Name="ESP Color", Color=ESPColor, Flag="ESPColorPicker", Callback=function(c) ESPColor=c end })
 
 -- Bypass Tab
 Bypass:CreateButton({ Name="Speed Hack", Callback=function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed=50; Rayfield:Notify({Title="Speed",Content="50",Duration=3})
-    end
-end})
-Bypass:CreateButton({ Name="Jump Hack", Callback=function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        LocalPlayer.Character.Humanoid.JumpPower=100; Rayfield:Notify({Title="Jump",Content="100",Duration=3})
-    end
+    pcall(function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 50
+            Rayfield:Notify({Title="Speed", Content="Set to 50", Duration=3})
+        end
+    end)
 end})
 
-print("ZnfPro GUI loaded and aimbot stabilized!")
+Bypass:CreateButton({ Name="Jump Hack", Callback=function()
+    pcall(function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = 100
+            Rayfield:Notify({Title="Jump", Content="Set to 100", Duration=3})
+        end
+    end)
+end})
+
+-- Cleanup on player leaving
+Players.PlayerRemoving:Connect(function(player)
+    if Marked[player] then
+        Marked[player]:Destroy()
+        Marked[player] = nil
+    end
+end)
+
+print("ZnfPro GUI loaded with improved aimbot!")
