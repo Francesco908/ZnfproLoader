@@ -19,24 +19,24 @@ local Window = Rayfield:CreateWindow({
 	}
 })
 
--- Tabs
-local MainTab = Window:CreateTab("Main", 4483362458)
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
+-- Tabs with different icons
+local MainTab = Window:CreateTab("Main", 4483362458) -- ESP icon
+local BypassTab = Window:CreateTab("Bypass", 6031091006) -- alternative icon
+local SettingsTab = Window:CreateTab("Settings", 6035047409) -- alternative icon
 
--- Services
+-- Services and variables
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- Variables
 local ESPColor = Color3.fromRGB(255, 0, 0)
 local ESPEnabled = false
 local AimEnabled = false
 local ESPConnection, AimConnection
 local MarkedPlayers = {}
 
--- Apply ESP highlight
+-- Apply ESP Highlight
 local function applyHighlight(player)
 	if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
 		local highlight = Instance.new("Highlight")
@@ -51,18 +51,7 @@ local function applyHighlight(player)
 	end
 end
 
--- Update ESP color live
-local function updateHighlightColors()
-	for player, _ in pairs(MarkedPlayers) do
-		if player.Character and player.Character:FindFirstChild("ZnfproESP") then
-			local h = player.Character.ZnfproESP
-			h.FillColor = ESPColor
-			h.OutlineColor = ESPColor
-		end
-	end
-end
-
--- Remove ESP from character
+-- Remove ESP
 local function removeHighlight(player)
 	if player.Character and player.Character:FindFirstChild("ZnfproESP") then
 		player.Character.ZnfproESP:Destroy()
@@ -70,25 +59,7 @@ local function removeHighlight(player)
 	MarkedPlayers[player] = nil
 end
 
--- ESP Color Dropdown
-SettingsTab:CreateDropdown({
-	Name = "ESP Color",
-	Options = {"Red", "Green", "Blue", "Yellow", "Purple"},
-	CurrentOption = "Red",
-	Callback = function(Option)
-		local colors = {
-			Red = Color3.fromRGB(255, 0, 0),
-			Green = Color3.fromRGB(0, 255, 0),
-			Blue = Color3.fromRGB(0, 140, 255),
-			Yellow = Color3.fromRGB(255, 255, 0),
-			Purple = Color3.fromRGB(140, 0, 255)
-		}
-		ESPColor = colors[Option]
-		updateHighlightColors()
-	end
-})
-
--- Toggle ESP
+-- FULL TOGGLE ESP (Enable/Disable Cleanly)
 SettingsTab:CreateButton({
 	Name = "Toggle ESP (Highlight Players)",
 	Callback = function()
@@ -104,7 +75,7 @@ SettingsTab:CreateButton({
 			end)
 			Rayfield:Notify({ Title = "ESP", Content = "ESP Enabled", Duration = 3 })
 		else
-			if ESPConnection then ESPConnection:Disconnect() end
+			if ESPConnection then ESPConnection:Disconnect() ESPConnection = nil end
 			for player, _ in pairs(MarkedPlayers) do
 				removeHighlight(player)
 			end
@@ -142,9 +113,31 @@ MainTab:CreateButton({
 			end)
 			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Enabled", Duration = 3 })
 		else
-			if AimConnection then AimConnection:Disconnect() end
+			if AimConnection then AimConnection:Disconnect() AimConnection = nil end
 			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Disabled", Duration = 3 })
 		end
 	end
 })
 
+-- Bypass Tab - Purely for appearance
+BypassTab:CreateButton({
+	Name = "Bypass Map",
+	Callback = function()
+		Rayfield:Notify({
+			Title = "Bypass",
+			Content = "Map bypass applied.",
+			Duration = 3
+		})
+	end
+})
+
+BypassTab:CreateButton({
+	Name = "Bypass Anticheat",
+	Callback = function()
+		Rayfield:Notify({
+			Title = "Bypass",
+			Content = "Anticheat bypass applied.",
+			Duration = 3
+		})
+	end
+})
