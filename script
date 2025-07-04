@@ -10,7 +10,7 @@ if not success then warn("Failed to load Rayfield UI Library"); return end
 global Window = Rayfield:CreateWindow({
     Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
     LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
-    LoadingSubtitle = "Universal script for all games",
+    LoadingSubtitle = "Universal shotter script for all games",
     KeySystem = true,
     KeySettings = {
         Title = "Authentication Required",
