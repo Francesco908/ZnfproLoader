@@ -64,11 +64,11 @@ local function closestInFOV()
                     local screenPos = Vector2.new(pos.X, pos.Y)
                     local distanceFromCenter = (screenPos - center).Magnitude
                     
-                    -- Check if within FOV circle
+                    -- Check if within FOV circle and prioritize head shots
                     if distanceFromCenter <= FOVSize then
-                        -- Prioritize closer targets
                         local worldDistance = getDistance(camera.CFrame.Position, head.Position)
-                        local priority = distanceFromCenter + (worldDistance * 0.01)
+                        -- Heavily prioritize distance to crosshair for precise headshots
+                        local priority = distanceFromCenter * 2 + (worldDistance * 0.005)
                         
                         if priority < bestDist then
                             best, bestDist = p, priority
@@ -81,7 +81,7 @@ local function closestInFOV()
     return best
 end
 
--- Aimbot Logic: Improved prediction and smoothing
+-- Aimbot Logic: Perfected headshot targeting
 local function doAim()
     pcall(function()
         local target = closestInFOV()
@@ -90,22 +90,29 @@ local function doAim()
         local head, root = getParts(target.Character)
         if not head or not root then return end
         
-        -- Calculate prediction based on velocity
-        local velocity = root.Velocity
-        local distance = getDistance(camera.CFrame.Position, head.Position)
-        local timeToTarget = distance / 1000 -- Adjust based on your game's bullet speed
+        -- Enhanced head position calculation with offset
+        local headPosition = head.Position
+        local headSize = head.Size
+        local targetCenter = headPosition + Vector3.new(0, headSize.Y * 0.1, 0) -- Slightly above center
         
-        -- Apply prediction only if target is moving
-        local predictedPosition = head.Position
-        if velocity.Magnitude > 5 then -- Only predict if moving fast enough
-            predictedPosition = head.Position + (velocity * PredictionStrength * timeToTarget)
+        -- Calculate prediction with velocity compensation
+        local velocity = root.Velocity
+        local distance = getDistance(camera.CFrame.Position, headPosition)
+        local timeToTarget = distance / 1000 -- Adjust based on bullet speed
+        
+        -- Apply prediction only for fast-moving targets
+        local predictedPosition = targetCenter
+        if velocity.Magnitude > 8 then
+            local prediction = velocity * PredictionStrength * timeToTarget
+            predictedPosition = targetCenter + prediction
         end
         
-        -- Smooth camera movement
+        -- Precise camera targeting with enhanced smoothing
         local currentCFrame = camera.CFrame
-        local targetCFrame = CFrame.lookAt(currentCFrame.Position, predictedPosition)
+        local lookDirection = (predictedPosition - currentCFrame.Position).Unit
+        local targetCFrame = CFrame.lookAt(currentCFrame.Position, currentCFrame.Position + lookDirection)
         
-        -- Apply smoothing
+        -- Apply smoothing with head-lock precision
         camera.CFrame = currentCFrame:Lerp(targetCFrame, AimSmoothness)
     end)
 end
@@ -156,34 +163,44 @@ Main:CreateToggle({ Name="No Recoil", CurrentValue=false, Flag="RecoilToggle", C
     end
 end})
 
--- Settings: ESP & TeamCheck
+-- Settings: ESP & TeamCheck (Fixed color bugs)
 Settings:CreateToggle({ Name="ESP", CurrentValue=false, Flag="ESPToggle", Callback=function(v)
     ESPEnabled=v
     if ESPConn then ESPConn:Disconnect() end
+    
+    -- Clear existing ESP
+    for p,h in pairs(Marked) do 
+        if h and h.Parent then h:Destroy() end
+        Marked[p] = nil 
+    end
+    
     if ESPEnabled then
         ESPConn = RunService.Heartbeat:Connect(function()
             for _,p in pairs(Players:GetPlayers()) do
-                if isValid(p) and not Marked[p] then
-                    -- Apply highlight with better settings
-                    local h = Instance.new("Highlight")
-                    h.Adornee = p.Character
-                    h.FillColor = ESPColor
-                    h.OutlineColor = Color3.fromRGB(0,0,0)
-                    h.FillTransparency = 0.3
-                    h.OutlineTransparency = 0
-                    h.Parent = p.Character
-                    Marked[p] = h
-                elseif (not isValid(p)) and Marked[p] then
-                    Marked[p]:Destroy()
+                if isValid(p) then
+                    if not Marked[p] or not Marked[p].Parent then
+                        -- Create new highlight
+                        local h = Instance.new("Highlight")
+                        h.Adornee = p.Character
+                        h.FillColor = ESPColor
+                        h.OutlineColor = Color3.fromRGB(255,255,255)
+                        h.FillTransparency = 0.4
+                        h.OutlineTransparency = 0
+                        h.Parent = p.Character
+                        Marked[p] = h
+                    else
+                        -- Update existing highlight color
+                        if Marked[p] then
+                            Marked[p].FillColor = ESPColor
+                        end
+                    end
+                elseif Marked[p] then
+                    -- Remove invalid highlights
+                    if Marked[p].Parent then Marked[p]:Destroy() end
                     Marked[p] = nil
                 end
             end
         end)
-    else
-        for p,h in pairs(Marked) do 
-            if h then h:Destroy() end
-            Marked[p] = nil 
-        end
     end
 end})
 
