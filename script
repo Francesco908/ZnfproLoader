@@ -1,340 +1,158 @@
--- ZnfPro Universal Gaming Utility - Complete Fix
+-- ZnfPro Universal Gaming Utility - Aimbot Fix & Stabilization
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
-
 if not success then
     warn("Failed to load Rayfield UI Library")
     return
 end
 
--- Create Window
+-- Window Initialization
 local Window = Rayfield:CreateWindow({
     Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
     LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
     LoadingSubtitle = "Universal script for all games",
     KeySystem = true,
-    KeySettings = {
-        Title = "Authentication Required",
-        Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
-        Note = "Get your key at: loaderkey.crabdance.com",
-        FileName = "ZnfproLoaderKey",
-        SaveKey = true,
-        GrabKeyFromSite = false,
-        Key = {"FREEKEYFORALL"}
-    }
+    KeySettings = { Title = "Authentication Required", Subtitle = "ᴢɴꜰᴘʀᴏ Key System", Note = "Get your key at: loaderkey.crabdance.com", FileName = "ZnfproLoaderKey", SaveKey = true, GrabKeyFromSite = false, Key = {"FREEKEYFORALL"} }
 })
 
--- Services
+-- Services & Vars
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local camera = workspace.CurrentCamera
 
--- Variables
-local ESPColor = Color3.fromRGB(255, 0, 0)
-local ESPEnabled, AimEnabled, SilentAimEnabled, TeamCheckEnabled = false, false, false, false
-local FOVSize = 150
-local AimSmoothness = 0.1
-local NoRecoilEnabled = false
-local ESPConn, AimConn, SilentAimConn
-local MarkedPlayers = {}
+local ESPColor = Color3.fromRGB(255,0,0)
+local AimEnabled, NoRecoilEnabled, ESPEnabled, TeamCheckEnabled = false, false, false, false
+local FOVSize, AimSmoothness = 150, 0.1
+local AimConn, ESPConn
+local Marked = {}
 
--- Add debug reference for recoil hook
-local debug = debug
-
--- Universal Helper Functions
-local function getCharacterParts(character)
-    local parts = {}
-    if character then
-        parts.head = character:FindFirstChild("Head")
-        parts.humanoid = character:FindFirstChild("Humanoid")
-        parts.humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-        parts.torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
-    end
-    return parts
+-- Helpers
+local function getParts(char)
+    local head = char:FindFirstChild("Head")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    return head, root, humanoid
 end
 
-local function getPlayerTeam(player)
-    if not player then return nil end
-    return player.Team or player.TeamColor or nil
-end
-
-local function isValidTarget(player)
-    if not player or player == LocalPlayer then return false end
-    if not player.Character then return false end
-    local parts = getCharacterParts(player.Character)
-    if not parts.head or not parts.humanoid or parts.humanoid.Health <= 0 then return false end
+local function isValid(player)
+    if player == LocalPlayer or not player.Character then return false end
+    local head, root, h = getParts(player.Character)
+    if not head or not h or h.Health <= 0 then return false end
     if TeamCheckEnabled then
-        local playerTeam = getPlayerTeam(player)
-        local localTeam = getPlayerTeam(LocalPlayer)
-        if playerTeam and localTeam and playerTeam == localTeam then return false end
+        if player.Team == LocalPlayer.Team then return false end
     end
     return true
 end
 
-local function getClosestPlayerInFOV()
-    local closest, shortest = nil, math.huge
+local function closestInFOV()
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-    for _, player in pairs(Players:GetPlayers()) do
-        if isValidTarget(player) then
-            local parts = getCharacterParts(player.Character)
-            if parts.head then
-                local pos, onScreen = camera:WorldToViewportPoint(parts.head.Position)
-                if onScreen and pos.Z > 0 then
-                    local screenPos = Vector2.new(pos.X, pos.Y)
-                    local distance = (screenPos - center).Magnitude
-                    if distance <= FOVSize and distance < shortest then
-                        shortest, closest = distance, player
+    local best, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if isValid(p) then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                local pos, onScreen = camera:WorldToViewportPoint(head.Position)
+                if onScreen and pos.Z>0 then
+                    local delta = (Vector2.new(pos.X,pos.Y) - center).Magnitude
+                    if delta < dist and delta <= FOVSize then
+                        best, dist = p, delta
                     end
                 end
             end
         end
     end
-    return closest
+    return best
 end
 
-local function applyESP(player)
-    if player.Character and not player.Character:FindFirstChild("ZnfproESP") then
-        pcall(function()
-            local highlight = Instance.new("Highlight")
-            highlight.Name = "ZnfproESP"
-            highlight.FillColor = ESPColor
-            highlight.FillTransparency = 0.25
-            highlight.OutlineColor = ESPColor
-            highlight.OutlineTransparency = 0
-            highlight.Adornee = player.Character
-            highlight.Parent = player.Character
-
-            local billboardGui = Instance.new("BillboardGui")
-            billboardGui.Name = "ZnfproESPText"
-            billboardGui.Adornee = player.Character:FindFirstChild("Head")
-            billboardGui.Size = UDim2.new(0, 100, 0, 50)
-            billboardGui.StudsOffset = Vector3.new(0, 2, 0)
-            billboardGui.Parent = player.Character
-
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = player.Name
-            textLabel.TextColor3 = ESPColor
-            textLabel.TextScaled = true
-            textLabel.Font = Enum.Font.SourceSansBold
-            textLabel.Parent = billboardGui
-
-            MarkedPlayers[player] = true
-        end)
-    end
-end
-
-local function removeESP(player)
-    if player.Character then
-        pcall(function()
-            local highlight = player.Character:FindFirstChild("ZnfproESP")
-            local billboard = player.Character:FindFirstChild("ZnfproESPText")
-            if highlight then highlight:Destroy() end
-            if billboard then billboard:Destroy() end
-        end)
-    end
-    MarkedPlayers[player] = nil
-end
-
-local function removeAllESP()
-    for player in pairs(MarkedPlayers) do
-        removeESP(player)
-    end
-end
-
--- Smooth Aimbot with simple prediction
-local function smoothAim(targetPosition)
-    local currentCFrame = camera.CFrame
-    local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPosition)
-    local newCFrame = currentCFrame:Lerp(targetCFrame, AimSmoothness)
-    camera.CFrame = newCFrame
-end
-
--- Create Tabs
-local MainTab = Window:CreateTab("Main", 4483362458)
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
-local BypassTab = Window:CreateTab("Bypass", 6031091006)
-
--- Main Tab: Toggle Aimbot
-MainTab:CreateButton({
-    Name = "Toggle Aimbot",
-    Callback = function()
-        AimEnabled = not AimEnabled
-        if AimEnabled then
-            AimConn = RunService.Heartbeat:Connect(function()
-                local target = getClosestPlayerInFOV()
-                if target and target.Character then
-                    local parts = getCharacterParts(target.Character)
-                    if parts.head and parts.humanoidRootPart then
-                        local predicted = parts.head.Position + parts.humanoidRootPart.Velocity * AimSmoothness
-                        smoothAim(predicted)
-                    end
-                end
-            end)
-            Rayfield:Notify({Title = "Aimbot", Content = "Enabled", Duration = 3})
-        else
-            if AimConn then AimConn:Disconnect() end
-            Rayfield:Notify({Title = "Aimbot", Content = "Disabled", Duration = 3})
-        end
-    end
-})
-
--- Main Tab: Toggle No Recoil
-MainTab:CreateButton({
-    Name = "Toggle No Recoil",
-    Callback = function()
-        NoRecoilEnabled = not NoRecoilEnabled
-        if NoRecoilEnabled then
-            pcall(function()
-                for _, v in pairs(getgc(true)) do
-                    if type(v) == "function" then
-                        local info = debug.getinfo(v)
-                        if info.name and info.name:lower():find("recoil") then
-                            hookfunction(v, function() end)
-                        end
-                    end
-                end
-            end)
-            Rayfield:Notify({Title = "No Recoil", Content = "Enabled", Duration = 3})
-        else
-            Rayfield:Notify({Title = "No Recoil", Content = "Disabled", Duration = 3})
-        end
-    end
-})
-
--- Main Tab: FOV Size Slider (for aimbot range)
-MainTab:CreateSlider({
-    Name = "FOV Size",
-    Range = {50, 500},
-    Increment = 10,
-    Suffix = "px",
-    CurrentValue = FOVSize,
-    Flag = "FOVSizeSlider",
-    Callback = function(value)
-        FOVSize = value
-    end
-})
-
--- Main Tab: Aim Smoothness Slider
-MainTab:CreateSlider({
-    Name = "Aim Smoothness",
-    Range = {0.01, 1},
-    Increment = 0.01,
-    Suffix = "",
-    CurrentValue = AimSmoothness,
-    Flag = "AimSmoothnessSlider",
-    Callback = function(value)
-        AimSmoothness = value
-        Rayfield:Notify({Title = "Smoothness", Content = tostring(value), Duration = 2})
-    end
-})
-
--- Settings Tab: Toggle ESP
-SettingsTab:CreateButton({
-    Name = "Toggle ESP",
-    Callback = function()
-        ESPEnabled = not ESPEnabled
-        if ESPEnabled then
-            ESPConn = RunService.Heartbeat:Connect(function()
-                for _, player in pairs(Players:GetPlayers()) do
-                    if isValidTarget(player) and not MarkedPlayers[player] then
-                        applyESP(player)
-                    elseif not isValidTarget(player) and MarkedPlayers[player] then
-                        removeESP(player)
-                    end
-                end
-            end)
-            Rayfield:Notify({Title = "ESP", Content = "Enabled", Duration = 3})
-        else
-            if ESPConn then ESPConn:Disconnect() end
-            removeAllESP()
-            Rayfield:Notify({Title = "ESP", Content = "Disabled", Duration = 3})
-        end
-    end
-})
-
--- Settings Tab: Team Check Toggle
-SettingsTab:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = false,
-    Flag = "TeamCheckToggle",
-    Callback = function(value)
-        TeamCheckEnabled = value
-        if ESPEnabled then removeAllESP() end
-        Rayfield:Notify({Title = "Team Check", Content = value and "On" or "Off", Duration = 2})
-    end
-})
-
--- Settings Tab: ESP Color Picker
-SettingsTab:CreateColorPicker({
-    Name = "ESP Color",
-    Color = ESPColor,
-    Flag = "ESPColorPicker",
-    Callback = function(value)
-        ESPColor = value
-        for player in pairs(MarkedPlayers) do
-            if player.Character then
-                local highlight = player.Character:FindFirstChild("ZnfproESP")
-                local billboard = player.Character:FindFirstChild("ZnfproESPText")
-                if highlight then highlight.FillColor = value; highlight.OutlineColor = value end
-                if billboard and billboard:FindFirstChild("TextLabel") then billboard.TextLabel.TextColor3 = value end
+-- Aimbot Logic: Aim at head with prediction & pcall safety
+local function doAim()
+    pcall(function()
+        local target = closestInFOV()
+        if target and target.Character then
+            local head, root = getParts(target.Character)
+            if head and root then
+                local predicted = head.Position + (root.Velocity * AimSmoothness)
+                local camC = camera.CFrame
+                camera.CFrame = camC:Lerp(CFrame.lookAt(camC.Position, predicted), AimSmoothness)
             end
         end
+    end)
+end
+
+-- GUI Tabs
+local Main = Window:CreateTab("Main", 4483362458)
+local Settings = Window:CreateTab("Settings", 4483362458)
+local Bypass = Window:CreateTab("Bypass", 6031091006)
+
+-- Main: Aimbot Toggle
+Main:CreateToggle({ Name="Aimbot", CurrentValue=false, Flag="AimToggle", Callback=function(val)
+    AimEnabled = val
+    if AimConn then AimConn:Disconnect() end
+    if AimEnabled then
+        AimConn = RunService.RenderStepped:Connect(doAim)
+        Rayfield:Notify({Title="Aimbot", Content="Enabled", Duration=3})
+    else
+        Rayfield:Notify({Title="Aimbot", Content="Disabled", Duration=3})
     end
-})
+end})
+
+-- Main: FOV & Smoothness
+Main:CreateSlider({ Name="FOV Size", Range={50,500}, Increment=10, Suffix="px", CurrentValue=FOVSize, Flag="FOVSlider", Callback=function(v) FOVSize=v end })
+Main:CreateSlider({ Name="Smoothness", Range={0.01,1}, Increment=0.01, CurrentValue=AimSmoothness, Flag="SmoothSlider", Callback=function(v) AimSmoothness=v end })
+
+-- Main: No Recoil
+Main:CreateToggle({ Name="No Recoil", CurrentValue=false, Flag="RecoilToggle", Callback=function(val)
+    NoRecoilEnabled = val
+    if NoRecoilEnabled then
+        pcall(function()
+            for _,fn in pairs(getgc(true)) do
+                if type(fn)=="function" and debug.getinfo(fn).name:lower():find("recoil") then
+                    hookfunction(fn, function() end)
+                end
+            end
+        end)
+        Rayfield:Notify({Title="NoRecoil", Content="Enabled", Duration=3})
+    else
+        Rayfield:Notify({Title="NoRecoil", Content="Disabled", Duration=3})
+    end
+end})
+
+-- Settings: ESP & TeamCheck
+Settings:CreateToggle({ Name="ESP", CurrentValue=false, Flag="ESPToggle", Callback=function(v)
+    ESPEnabled=v
+    if ESPConn then ESPConn:Disconnect() end
+    if ESPEnabled then
+        ESPConn = RunService.Heartbeat:Connect(function()
+            for _,p in pairs(Players:GetPlayers()) do
+                if isValid(p) and not Marked[p] then
+                    -- apply highlight
+                    local h = Instance.new("Highlight"); h.Adornee=p.Character; h.FillColor=ESPColor; h.Parent=p.Character
+                    Marked[p]=h
+                elseif (not isValid(p)) and Marked[p] then
+                    Marked[p]:Destroy(); Marked[p]=nil
+                end
+            end
+        end)
+    else
+        for p,h in pairs(Marked) do h:Destroy(); Marked[p]=nil end
+    end
+end})
+Settings:CreateToggle({ Name="Team Check", CurrentValue=false, Flag="TeamToggle", Callback=function(v) TeamCheckEnabled=v end })
+Settings:CreateColorPicker({ Name="ESP Color", Color=ESPColor, Flag="ESPColorPicker", Callback=function(c) ESPColor=c end })
 
 -- Bypass Tab
-BypassTab:CreateButton({
-    Name = "Universal Bypass",
-    Callback = function()
-        pcall(function()
-            for _, v in pairs(getgc(true)) do
-                if type(v) == "table" and rawget(v, "Detected") then
-                    rawset(v, "Detected", function() return false end)
-                end
-            end
-        end)
-        Rayfield:Notify({Title = "Bypass", Content = "Universal bypass applied", Duration = 3})
+Bypass:CreateButton({ Name="Speed Hack", Callback=function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed=50; Rayfield:Notify({Title="Speed",Content="50",Duration=3})
     end
-})
-
-BypassTab:CreateButton({
-    Name = "Speed Hack",
-    Callback = function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 50
-            Rayfield:Notify({Title = "Speed", Content = "Speed increased to 50", Duration = 3})
-        end
+end})
+Bypass:CreateButton({ Name="Jump Hack", Callback=function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower=100; Rayfield:Notify({Title="Jump",Content="100",Duration=3})
     end
-})
+end})
 
-BypassTab:CreateButton({
-    Name = "Jump Power",
-    Callback = function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.JumpPower = 100
-            Rayfield:Notify({Title = "Jump", Content = "Jump power increased", Duration = 3})
-        end
-    end
-})
-
--- Cleanup Events
-Players.PlayerRemoving:Connect(function(player)
-    if MarkedPlayers[player] then removeESP(player) end
-end)
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterRemoving:Connect(function()
-        if MarkedPlayers[player] then MarkedPlayers[player] = nil end
-    end)
-end)
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    camera = workspace.CurrentCamera
-end)
-
-print("ZnfPro Universal GUI loaded successfully!")
+print("ZnfPro GUI loaded and aimbot stabilized!")
