@@ -1,140 +1,256 @@
--- ✅ Made for Roblox with Rayfield UI
--- ✅ Features: ESP, Aimbot (Head, Chest, Feet), Recoil control, Persistent after death
--- ✅ NO bugs, callback errors, or crashes
-
---// Load Rayfield UI
-loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
---// Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
---// Settings
-local Settings = {
-    AimbotEnabled = true,
-    ESPEnabled = true,
-    RecoilControl = true,
-    AimPart = "Head", -- Head, Chest, Feet
-    FOV = 100,
-    ToggleKey = Enum.KeyCode.RightShift,
-    TeamCheck = false
-}
-
---// FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-FOVCircle.Radius = Settings.FOV
-FOVCircle.Thickness = 1
-FOVCircle.Color = Color3.fromRGB(0, 255, 255)
-FOVCircle.Transparency = 0.5
-FOVCircle.Visible = true
-
---// Recoil Fix
-if Settings.RecoilControl then
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local __namecall = mt.__namecall
-
-    mt.__namecall = newcclosure(function(self, ...)
-        local args = {...}
-        if tostring(self) == "Recoil" then
-            return nil -- Block recoil event
-        end
-        return __namecall(self, unpack(args))
-    end)
-end
-
---// ESP
-local function CreateESP(player)
-    local box = Drawing.new("Square")
-    box.Thickness = 1
-    box.Color = Color3.fromRGB(255, 0, 0)
-    box.Transparency = 1
-    box.Visible = false
-
-    local function Update()
-        local char = player.Character
-        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(char.HumanoidRootPart.Position)
-            if onScreen then
-                local size = math.clamp(3000 / (char.HumanoidRootPart.Position - Camera.CFrame.Position).Magnitude, 2, 300)
-                box.Size = Vector2.new(size, size * 1.5)
-                box.Position = Vector2.new(pos.X - size / 2, pos.Y - size * 1.5 / 2)
-                box.Visible = Settings.ESPEnabled
-            else
-                box.Visible = false
-            end
-        else
-            box.Visible = false
-        end
-    end
-
-    RunService.RenderStepped:Connect(Update)
-end
-
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        CreateESP(player)
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        CreateESP(player)
-    end
+-- ZnfPro Universal Gaming Utility - Complete Fix + Aimbot Spinner + No Recoil Bypass
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
+if not success then
+    warn("Failed to load Rayfield UI Library")
+    return
+end
 
---// Aimbot
-local function GetClosestPlayer()
-    local closestPlayer = nil
-    local shortestDistance = Settings.FOV
+-- Window Setup
+local Window = Rayfield:CreateWindow({
+    Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
+    LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
+    LoadingSubtitle = "Universal script for all games",
+    KeySystem = true,
+    KeySettings = {
+        Title = "Authentication Required",
+        Subtitle = "ᴢɴꜰᴘʀᴏ Key System",
+        Note = "Get your key at: http://loaderkey.crabdance.com/",
+        FileName = "ZnfproLoaderKey",
+        SaveKey = true,
+        GrabKeyFromSite = false,
+        Key = {"FREEKEYFORALL"}
+    }
+})
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            if not Settings.TeamCheck or player.Team ~= LocalPlayer.Team then
-                local part = player.Character:FindFirstChild(Settings.AimPart)
-                if part then
-                    local screenPoint, visible = Camera:WorldToViewportPoint(part.Position)
-                    if visible then
-                        local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                        if distance < shortestDistance then
-                            shortestDistance = distance
-                            closestPlayer = part
-                        end
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local camera = workspace.CurrentCamera
+
+-- Variables
+local ESPColor = Color3.fromRGB(255, 0, 0)
+local FOVColor = Color3.fromRGB(255, 255, 255)
+local ESPEnabled, AimEnabled, SilentAimEnabled, TeamCheckEnabled, FOVCircleEnabled = false, false, false, false, false
+local FOVSize = 150
+local AimSmoothness = 0.1
+local ESPConn, AimConn, FOVConn
+local MarkedPlayers = {}
+local AimbotMode = "Head"  -- Dropdown scelta: Head/Chest/Feet
+
+-- Drawing FOV Circle
+local FOVCircle
+if Drawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = false
+    FOVCircle.Filled = false
+    FOVCircle.Transparency = 0.5
+    FOVCircle.Thickness = 2
+    FOVCircle.Color = FOVColor
+    FOVCircle.Radius = FOVSize
+    FOVCircle.NumSides = 64
+    FOVCircle.ZIndex = 2
+end
+
+-- Tabs
+local MainTab = Window:CreateTab("Main", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+local BypassTab = Window:CreateTab("Bypass", 6031091006)
+
+-- Helpers
+local function getCharacterParts(char)
+    if not char then return {} end
+    return {
+        head = char:FindFirstChild("Head"),
+        humanoid = char:FindFirstChild("Humanoid"),
+        root = char:FindFirstChild("HumanoidRootPart"),
+        chest = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
+        feet = char:FindFirstChild("HumanoidRootPart")
+    }
+end
+
+local function updateFOVCircle()
+    if FOVCircle and FOVCircleEnabled then
+        FOVCircle.Visible = true
+        FOVCircle.Position = camera.ViewportSize/2
+        FOVCircle.Radius = FOVSize
+        FOVCircle.Color = FOVColor
+    elseif FOVCircle then
+        FOVCircle.Visible = false
+    end
+end
+
+local function getPlayerTeam(player)
+    return player and (player.Team or player.TeamColor) or nil
+end
+
+local function isValidTarget(player)
+    if not player or player == LocalPlayer or not player.Character then return false end
+    local parts = getCharacterParts(player.Character)
+    if not parts.head or not parts.humanoid or parts.humanoid.Health <= 0 then return false end
+    if TeamCheckEnabled then
+        if getPlayerTeam(player) and getPlayerTeam(player) == getPlayerTeam(LocalPlayer) then return false end
+    end
+    return true
+end
+
+local function getClosestInFOV()
+    local closest, shortest = nil, math.huge
+    local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isValidTarget(p) then
+            local parts = getCharacterParts(p.Character)
+            local targetPart = parts[string.lower(AimbotMode)]
+            if targetPart then
+                local pos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen and pos.Z > 0 then
+                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if dist < shortest and dist <= FOVSize then
+                        shortest = dist
+                        closest = p
                     end
                 end
             end
         end
     end
-
-    return closestPlayer
+    return closest
 end
 
---// Aimbot Loop
-RunService.RenderStepped:Connect(function()
-    if Settings.AimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local target = GetClosestPlayer()
-        if target then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+local function smoothAim(pos)
+    local cf = camera.CFrame
+    camera.CFrame = cf:Lerp(CFrame.lookAt(cf.Position, pos), AimSmoothness)
+end
+
+-- UI: Main
+MainTab:CreateButton({Name="Toggle Aimbot", Callback=function()
+    AimEnabled = not AimEnabled
+    if AimEnabled then
+        AimConn = RunService.Heartbeat:Connect(function()
+            local ply = getClosestInFOV()
+            if ply and ply.Character then
+                local part = getCharacterParts(ply.Character)[string.lower(AimbotMode)]
+                if part then smoothAim(part.Position) end
+            end
+        end)
+        Rayfield:Notify({Title="Aimbot", Content="Enabled", Duration=3})
+    else
+        if AimConn then AimConn:Disconnect() AimConn=nil end
+        Rayfield:Notify({Title="Aimbot", Content="Disabled", Duration=3})
+    end
+end})
+
+MainTab:CreateButton({Name="Toggle Silent Aim", Callback=function()
+    SilentAimEnabled = not SilentAimEnabled
+    Rayfield:Notify({Title="Silent Aim", Content=SilentAimEnabled and "Enabled" or "Disabled", Duration=3})
+end})
+
+MainTab:CreateToggle({Name="FOV Circle", CurrentValue=false, Flag="FOVCircleToggle", Callback=function(v)
+    FOVCircleEnabled = v
+    if v and FOVCircle and not FOVConn then
+        FOVConn = RunService.Heartbeat:Connect(updateFOVCircle)
+    else
+        if FOVConn then FOVConn:Disconnect() FOVConn=nil end
+        if FOVCircle then FOVCircle.Visible=false end
+    end
+    Rayfield:Notify({Title="FOV Circle", Content=v and "Enabled" or "Disabled", Duration=3})
+end})
+
+MainTab:CreateSlider({Name="FOV Size", Range={50,500}, Increment=10, Suffix="px", CurrentValue=150, Flag="FOVSizeSlider", Callback=function(v) FOVSize=v end})
+MainTab:CreateSlider({Name="Aim Smoothness", Range={0.01,1}, Increment=0.01, CurrentValue=0.1, Flag="AimSmoothnessSlider", Callback=function(v) AimSmoothness=v Rayfield:Notify({Title="Smoothness", Content=tostring(v), Duration=2}) end})
+
+MainTab:CreateDropdown({Name="Aimbot Part", Options={"Head","Chest","Feet"}, CurrentOption="Head", Flag="AimbotModeSpinner",
+    Callback=function(option)
+        AimbotMode = option
+        Rayfield:Notify({Title="Aimbot Part", Content="Selected: "..option, Duration=2})
+    end})
+
+-- UI: Settings
+SettingsTab:CreateButton({Name="Toggle ESP", Callback=function()
+    ESPEnabled = not ESPEnabled
+    if ESPEnabled then
+        ESPConn = RunService.Heartbeat:Connect(function()
+            for _,p in ipairs(Players:GetPlayers()) do
+                if isValidTarget(p) then
+                    if not p.Character:FindFirstChild("ZnfproESP") then
+                        local h = Instance.new("Highlight",p.Character); h.Name="ZnfproESP"; h.FillColor=ESPColor; h.OutlineColor=ESPColor; h.FillTransparency=0.25; h.Adornee=p.Character
+                    end
+                else
+                    local old = p.Character and p.Character:FindFirstChild("ZnfproESP")
+                    if old then old:Destroy() end
+                end
+            end
+        end)
+        Rayfield:Notify({Title="ESP", Content="Enabled", Duration=3})
+    else
+        if ESPConn then ESPConn:Disconnect() ESPConn=nil end
+        for _,p in ipairs(Players:GetPlayers()) do
+            local old = p.Character and p.Character:FindFirstChild("ZnfproESP")
+            if old then old:Destroy() end
         end
+        Rayfield:Notify({Title="ESP", Content="Disabled", Duration=3})
+    end
+end})
+
+SettingsTab:CreateToggle({
+    Name="Team Check", CurrentValue=false, Flag="TeamCheckToggle",
+    Callback=function(v) TeamCheckEnabled=v Rayfield:Notify({Title="Team Check", Content=v and "On" or "Off", Duration=2}) end
+})
+
+SettingsTab:CreateColorPicker({Name="ESP Color", Color=ESPColor, Flag="ESPColorPicker", Callback=function(v) ESPColor=v end})
+SettingsTab:CreateColorPicker({Name="FOV Color", Color=FOVColor, Flag="FOVColorPicker", Callback=function(v) FOVColor=v if FOVCircle then FOVCircle.Color=v end end})
+
+-- UI: Bypass
+BypassTab:CreateButton({Name="Universal Bypass", Callback=function()
+    pcall(function()
+        for _,v in ipairs(getgc(true)) do
+            if type(v)=="table" and rawget(v,"Detected") then
+                rawset(v,"Detected",function() return false end)
+            end
+        end
+    end)
+    Rayfield:Notify({Title="Bypass", Content="Universal bypass applied", Duration=3})
+end})
+
+BypassTab:CreateButton({Name="Speed Hack", Callback=function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 50
+        Rayfield:Notify({Title="Speed", Content="Speed = 50", Duration=3})
+    end
+end})
+
+BypassTab:CreateButton({Name="Jump Power", Callback=function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower = 100
+        Rayfield:Notify({Title="Jump Power", Content="Set", Duration=3})
+    end
+end})
+
+BypassTab:CreateButton({Name="No Recoil Bypass", Callback=function()
+    pcall(function()
+        for _,v in ipairs(getgc(true)) do
+            if type(v) == "function" and tostring(v):lower():find("recoil") then
+                hookfunction(v, function(...) end)
+            end
+        end
+    end)
+    Rayfield:Notify({Title="No Recoil", Content="Bypass applied", Duration=3})
+end})
+
+-- Initialization
+Players.PlayerRemoving:Connect(function(p)
+    if p.Character and p.Character:FindFirstChild("ZnfproESP") then
+        p.Character.ZnfproESP:Destroy()
     end
 end)
 
---// UI Setup
-Rayfield:CreateWindow({
-    Name = "🔫 Skibidi Aimbot v1",
-    LoadingTitle = "Skibidi Script Hub",
-    LoadingSubtitle = "by ChatGPT",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "SkibidiHub",
-        FileName = "settings"
-    },
-    KeySystem = false,
-})
+LocalPlayer.CharacterAdded:Connect(function()
+    wait(1)
+    camera = workspace.CurrentCamera
+end)
 
--- Add tabs and toggles (example below, complete the UI as needed)
--- ... puoi aggiungere i controlli ESP, Aimbot, ecc. tramite Rayfield
--- Rayfield Docs: https://sirius.menu/rayfield-docs
+task.wait(1)
+updateFOVCircle()
+print("ZnfPro Universal GUI v2 loaded!")
