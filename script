@@ -5,7 +5,7 @@ local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 local Window = Rayfield:CreateWindow({
 	Name = "ᴢɴꜰᴘʀᴏ Utility GUI",
 	LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
-	LoadingSubtitle = "Thanks for using my script",
+	LoadingSubtitle = "Best script for shooter games",
 	KeySystem = true,
 	KeySettings = {
 		Title = "Authentication Required",
@@ -27,7 +27,6 @@ local SettingsTab = Window:CreateTab("Settings", 6035047405)
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local camera = workspace.CurrentCamera
 local mouse = LocalPlayer:GetMouse()
 
@@ -43,18 +42,18 @@ local FOVSize = 150
 local ESPConnection, AimConnection, SilentAimConnection, FOVConnection
 local MarkedPlayers = {}
 
--- FOV Circle Drawing
+-- FOV Circle Drawing (Fixed)
 local FOVCircle
-pcall(function()
+if Drawing then
 	FOVCircle = Drawing.new("Circle")
 	FOVCircle.Visible = false
 	FOVCircle.Filled = false
-	FOVCircle.Transparency = 0.7
+	FOVCircle.Transparency = 0.5
 	FOVCircle.Thickness = 2
 	FOVCircle.Color = FOVColor
 	FOVCircle.Radius = FOVSize
-	FOVCircle.NumSides = 64
-end)
+	FOVCircle.NumSides = 100
+end
 
 -- Helper Functions
 local function getPlayerTeam(player)
@@ -147,7 +146,7 @@ local function updateFOVCircle()
 	end
 end
 
--- Main Tab - Toggle Aimbot (with character movement)
+-- Main Tab - Toggle Aimbot (Only body/head rotation, NO walking)
 MainTab:CreateButton({
 	Name = "Toggle Aimbot",
 	Callback = function()
@@ -161,26 +160,18 @@ MainTab:CreateButton({
 					local head = closestPlayer.Character.Head
 					local char = LocalPlayer.Character
 					
-					if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+					if char and char:FindFirstChild("HumanoidRootPart") then
 						local hrp = char.HumanoidRootPart
-						local humanoid = char.Humanoid
 						
 						-- Calculate direction to target
 						local direction = (head.Position - hrp.Position).Unit
-						local targetPosition = head.Position
 						
 						-- Rotate camera to look at target
-						camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
+						camera.CFrame = CFrame.lookAt(camera.CFrame.Position, head.Position)
 						
-						-- Rotate character to face target
+						-- Rotate character body to face target (NO WALKING - just rotation)
 						local newCFrame = CFrame.lookAt(hrp.Position, hrp.Position + Vector3.new(direction.X, 0, direction.Z))
 						hrp.CFrame = newCFrame
-						
-						-- Move character towards target (optional - makes it more realistic)
-						local distance = (targetPosition - hrp.Position).Magnitude
-						if distance > 10 then -- Only move if target is far enough
-							humanoid:MoveTo(targetPosition)
-						end
 					end
 				end
 			end)
@@ -189,11 +180,6 @@ MainTab:CreateButton({
 			if AimConnection then 
 				AimConnection:Disconnect() 
 				AimConnection = nil 
-			end
-			-- Stop character movement
-			local char = LocalPlayer.Character
-			if char and char:FindFirstChild("Humanoid") then
-				char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
 			end
 			Rayfield:Notify({ Title = "Aimbot", Content = "Aimbot Disabled", Duration = 3 })
 		end
@@ -228,7 +214,6 @@ MainTab:CreateToggle({
 	Flag = "FOVCircleToggle",
 	Callback = function(Value)
 		FOVCircleEnabled = Value
-		updateFOVCircle()
 		if Value then
 			FOVConnection = RunService.RenderStepped:Connect(updateFOVCircle)
 			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Enabled", Duration = 3 })
@@ -237,8 +222,12 @@ MainTab:CreateToggle({
 				FOVConnection:Disconnect() 
 				FOVConnection = nil 
 			end
+			if FOVCircle then
+				FOVCircle.Visible = false
+			end
 			Rayfield:Notify({ Title = "FOV Circle", Content = "FOV Circle Disabled", Duration = 3 })
 		end
+		updateFOVCircle()
 	end
 })
 
@@ -354,21 +343,6 @@ SettingsTab:CreateColorPicker({
 	end
 })
 
--- Settings Tab - Character Movement Toggle
-SettingsTab:CreateToggle({
-	Name = "Character Auto Movement",
-	CurrentValue = true,
-	Flag = "CharacterMovementToggle",
-	Callback = function(Value)
-		-- This will be used in the aimbot logic
-		Rayfield:Notify({ 
-			Title = "Character Movement", 
-			Content = Value and "Auto movement enabled" or "Auto movement disabled", 
-			Duration = 3 
-		})
-	end
-})
-
 -- Bypass Tab - Bypass Functions
 BypassTab:CreateButton({
 	Name = "Bypass Map",
@@ -401,26 +375,3 @@ end)
 
 -- Initialize FOV Circle
 updateFOVCircle()
-
--- Additional Character Movement Handler
-RunService.RenderStepped:Connect(function()
-	if AimEnabled then
-		local char = LocalPlayer.Character
-		if char and char:FindFirstChild("Humanoid") then
-			local humanoid = char.Humanoid
-			
-			-- Make character walk more naturally when aiming
-			if humanoid.MoveDirection.Magnitude > 0 then
-				humanoid.WalkSpeed = 8 -- Slower when aiming
-			else
-				humanoid.WalkSpeed = 16 -- Normal speed
-			end
-		end
-	else
-		-- Reset to normal speed when aimbot is off
-		local char = LocalPlayer.Character
-		if char and char:FindFirstChild("Humanoid") then
-			char.Humanoid.WalkSpeed = 16
-		end
-	end
-end)
