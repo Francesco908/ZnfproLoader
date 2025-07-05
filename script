@@ -1,429 +1,177 @@
--- ZnfPro Universal Gaming Utility - Integrated with Exunys Aimbot
+-- ZnfPro Universal Gaming Utility - Full Integration with Exunys V3 Features
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
-if not success then
-    warn("Failed to load Rayfield UI Library")
-    return
-end
+if not success then warn("Failed to load Rayfield UI Library") return end
 
--- Window Initialization
+-- Window Setup
 local Window = Rayfield:CreateWindow({
     Name = "ᴢɴꜰᴘʀᴏ Universal GUI",
     LoadingTitle = "ᴢɴꜰᴘʀᴏ - Loader",
     LoadingSubtitle = "Universal script for all games",
     KeySystem = true,
-    KeySettings = { Title = "Authentication Required", Subtitle = "ᴢɴꜰᴘʀᴏ Key System", Note = "Get your key at: loaderkey.crabdance.com", FileName = "ZnfproLoaderKey", SaveKey = true, GrabKeyFromSite = false, Key = {"FREEKEYFORALL"} }
+    KeySettings = { Title="Auth Required", Subtitle="Key System", Note="Get key at loaderkey.crabdance.com", FileName="ZnfProKey", SaveKey=true, GrabKeyFromSite=false, Key={"FREEKEYFORALL"} }
 })
 
--- Services & Cache
-local game, workspace = game, workspace
-local getrawmetatable, pcall, getgenv, next, tick = getrawmetatable, pcall, getgenv, next, tick
-local Vector2new, Vector3zero, CFramenew, Color3fromRGB, Color3fromHSV, Drawingnew, TweenInfonew = Vector2.new, Vector3.zero, CFrame.new, Color3.fromRGB, Color3.fromHSV, Drawing.new, TweenInfo.new
-local tablefind, tableremove, stringlower, stringsub, mathclamp = table.find, table.remove, string.lower, string.sub, math.clamp
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInput = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
-local GameMetatable = getrawmetatable and getrawmetatable(game) or {
-    __index = function(self, Index) return self[Index] end,
-    __newindex = function(self, Index, Value) self[Index] = Value end
+-- Environment & State
+getgenv().ZnfPro = getgenv().ZnfPro or {}
+local Env = getgenv().ZnfPro
+Env.Settings = Env.Settings or {
+    Enabled=false, TeamCheck=false, AliveCheck=true, WallCheck=false,
+    FOV=120, Smooth=0.1, LockPart="Head",
+    Trigger=Enum.UserInputType.MouseButton2, Toggle=false,
+    SilentAim=false
 }
+-- skeleton ESP storage
+Env.Skel = Env.Skel or {}
+-- FOV circle
+local fovC = Drawing.new("Circle"); fovC.Visible=false fovC.Filled=false fovC.Transparency=1 fovC.Thickness=1 fovC.NumSides=64
 
-local __index = GameMetatable.__index
-local __newindex = GameMetatable.__newindex
-local getrenderproperty, setrenderproperty = getrenderproperty or __index, setrenderproperty or __newindex
-local GetService = __index(game, "GetService")
+local Conn = {}
+local Locked, OrigSens
 
-local Players = GetService(game, "Players")
-local RunService = GetService(game, "RunService")
-local UserInputService = GetService(game, "UserInputService")
-local TweenService = GetService(game, "TweenService")
-local LocalPlayer = __index(Players, "LocalPlayer")
-local Camera = __index(workspace, "CurrentCamera")
-
-local FindFirstChild, FindFirstChildOfClass = __index(game, "FindFirstChild"), __index(game, "FindFirstChildOfClass")
-local GetDescendants = __index(game, "GetDescendants")
-local WorldToViewportPoint = __index(Camera, "WorldToViewportPoint")
-local GetPartsObscuringTarget = __index(Camera, "GetPartsObscuringTarget")
-local GetMouseLocation = __index(UserInputService, "GetMouseLocation")
-local GetPlayers = __index(Players, "GetPlayers")
-
--- Variables
-local ESPColor = Color3.fromRGB(255,0,0)
-local ESPEnabled, TeamCheckEnabled = false, false
-local ESPConn, Marked = nil, {}
-local RequiredDistance, Typing, Running, ServiceConnections, Animation, OriginalSensitivity = 2000, false, false, {}, nil, nil
-
--- Exunys Aimbot Core Functions
-local FixUsername = function(String)
-    local Result
-    for _, Value in next, GetPlayers(Players) do
-        local Name = __index(Value, "Name")
-        if stringsub(stringlower(Name), 1, #String) == stringlower(String) then
-            Result = Name
-        end
-    end
-    return Result
-end
-
-local GetRainbowColor = function()
-    return Color3fromHSV(tick() % 1, 1, 1)
-end
-
-local ConvertVector = function(Vector)
-    return Vector2new(Vector.X, Vector.Y)
-end
-
--- Exunys Aimbot Environment
-if getgenv().ExunysDeveloperAimbot and getgenv().ExunysDeveloperAimbot.Exit then
-    getgenv().ExunysDeveloperAimbot:Exit()
-end
-
-getgenv().ExunysDeveloperAimbot = {
-    DeveloperSettings = {
-        UpdateMode = "RenderStepped",
-        TeamCheckOption = "TeamColor",
-        RainbowSpeed = 1
-    },
-    Settings = {
-        Enabled = false,
-        TeamCheck = false,
-        AliveCheck = true,
-        WallCheck = false,
-        OffsetToMoveDirection = false,
-        OffsetIncrement = 15,
-        Sensitivity = 0.1,
-        Sensitivity2 = 3.5,
-        LockMode = 1,
-        LockPart = "Head",
-        TriggerKey = Enum.UserInputType.MouseButton2,
-        Toggle = false
-    },
-    FOVSettings = {
-        Enabled = true,
-        Visible = true,
-        Radius = 90,
-        NumSides = 60,
-        Thickness = 1,
-        Transparency = 1,
-        Filled = false,
-        RainbowColor = false,
-        RainbowOutlineColor = false,
-        Color = Color3fromRGB(255, 255, 255),
-        OutlineColor = Color3fromRGB(0, 0, 0),
-        LockedColor = Color3fromRGB(255, 150, 150)
-    },
-    Blacklisted = {},
-    FOVCircleOutline = Drawingnew("Circle"),
-    FOVCircle = Drawingnew("Circle")
-}
-
-local Environment = getgenv().ExunysDeveloperAimbot
-
-setrenderproperty(Environment.FOVCircle, "Visible", false)
-setrenderproperty(Environment.FOVCircleOutline, "Visible", false)
-
-local CancelLock = function()
-    Environment.Locked = nil
-    local FOVCircle = Environment.FOVCircle
-    setrenderproperty(FOVCircle, "Color", Environment.FOVSettings.Color)
-    __newindex(UserInputService, "MouseDeltaSensitivity", OriginalSensitivity)
-    if Animation then
-        Animation:Cancel()
-    end
-end
-
-local GetClosestPlayer = function()
-    local Settings = Environment.Settings
-    local LockPart = Settings.LockPart
-    
-    if not Environment.Locked then
-        RequiredDistance = Environment.FOVSettings.Enabled and Environment.FOVSettings.Radius or 2000
-        
-        for _, Value in next, GetPlayers(Players) do
-            local Character = __index(Value, "Character")
-            local Humanoid = Character and FindFirstChildOfClass(Character, "Humanoid")
-            
-            if Value ~= LocalPlayer and not tablefind(Environment.Blacklisted, __index(Value, "Name")) and Character and FindFirstChild(Character, LockPart) and Humanoid then
-                local PartPosition, TeamCheckOption = __index(Character[LockPart], "Position"), Environment.DeveloperSettings.TeamCheckOption
-                
-                if Settings.TeamCheck and __index(Value, TeamCheckOption) == __index(LocalPlayer, TeamCheckOption) then
-                    continue
-                end
-                
-                if Settings.AliveCheck and __index(Humanoid, "Health") <= 0 then
-                    continue
-                end
-                
-                if Settings.WallCheck then
-                    local BlacklistTable = GetDescendants(__index(LocalPlayer, "Character"))
-                    for _, Value in next, GetDescendants(Character) do
-                        BlacklistTable[#BlacklistTable + 1] = Value
-                    end
-                    if #GetPartsObscuringTarget(Camera, {PartPosition}, BlacklistTable) > 0 then
-                        continue
-                    end
-                end
-                
-                local Vector, OnScreen, Distance = WorldToViewportPoint(Camera, PartPosition)
-                Vector = ConvertVector(Vector)
-                Distance = (GetMouseLocation(UserInputService) - Vector).Magnitude
-                
-                if Distance < RequiredDistance and OnScreen then
-                    RequiredDistance, Environment.Locked = Distance, Value
-                end
-            end
-        end
-    elseif (GetMouseLocation(UserInputService) - ConvertVector(WorldToViewportPoint(Camera, __index(__index(__index(Environment.Locked, "Character"), LockPart), "Position")))).Magnitude > RequiredDistance then
-        CancelLock()
-    end
-end
-
-local LoadAimbot = function()
-    OriginalSensitivity = __index(UserInputService, "MouseDeltaSensitivity")
-    local Settings, FOVCircle, FOVCircleOutline, FOVSettings = Environment.Settings, Environment.FOVCircle, Environment.FOVCircleOutline, Environment.FOVSettings
-    
-    ServiceConnections.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
-        local OffsetToMoveDirection, LockPart = Settings.OffsetToMoveDirection, Settings.LockPart
-        
-        if FOVSettings.Enabled and Settings.Enabled then
-            for Index, Value in next, FOVSettings do
-                if Index == "Color" then continue end
-                if pcall(getrenderproperty, FOVCircle, Index) then
-                    setrenderproperty(FOVCircle, Index, Value)
-                    setrenderproperty(FOVCircleOutline, Index, Value)
-                end
-            end
-            
-            setrenderproperty(FOVCircle, "Color", (Environment.Locked and FOVSettings.LockedColor) or FOVSettings.RainbowColor and GetRainbowColor() or FOVSettings.Color)
-            setrenderproperty(FOVCircleOutline, "Color", FOVSettings.RainbowOutlineColor and GetRainbowColor() or FOVSettings.OutlineColor)
-            
-            setrenderproperty(FOVCircleOutline, "Thickness", FOVSettings.Thickness + 1)
-            setrenderproperty(FOVCircle, "Position", GetMouseLocation(UserInputService))
-            setrenderproperty(FOVCircleOutline, "Position", GetMouseLocation(UserInputService))
-        else
-            setrenderproperty(FOVCircle, "Visible", false)
-            setrenderproperty(FOVCircleOutline, "Visible", false)
-        end
-        
-        if Running and Settings.Enabled then
-            GetClosestPlayer()
-            local Offset = OffsetToMoveDirection and __index(FindFirstChildOfClass(__index(Environment.Locked, "Character"), "Humanoid"), "MoveDirection") * (mathclamp(Settings.OffsetIncrement, 1, 30) / 10) or Vector3zero
-            
-            if Environment.Locked then
-                local LockedPosition_Vector3 = __index(__index(Environment.Locked, "Character")[LockPart], "Position")
-                local LockedPosition = WorldToViewportPoint(Camera, LockedPosition_Vector3 + Offset)
-                
-                if Environment.Settings.LockMode == 2 then
-                    mousemoverel((LockedPosition.X - GetMouseLocation(UserInputService).X) / Settings.Sensitivity2, (LockedPosition.Y - GetMouseLocation(UserInputService).Y) / Settings.Sensitivity2)
-                else
-                    if Settings.Sensitivity > 0 then
-                        Animation = TweenService:Create(Camera, TweenInfonew(Environment.Settings.Sensitivity, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFramenew(Camera.CFrame.Position, LockedPosition_Vector3)})
-                        Animation:Play()
-                    else
-                        __newindex(Camera, "CFrame", CFramenew(Camera.CFrame.Position, LockedPosition_Vector3 + Offset))
-                    end
-                    __newindex(UserInputService, "MouseDeltaSensitivity", 0)
-                end
-                setrenderproperty(FOVCircle, "Color", FOVSettings.LockedColor)
-            end
-        end
-    end)
-    
-    ServiceConnections.InputBeganConnection = UserInputService.InputBegan:Connect(function(Input)
-        local TriggerKey, Toggle = Settings.TriggerKey, Settings.Toggle
-        if Typing then return end
-        
-        if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode == TriggerKey or Input.UserInputType == TriggerKey then
-            if Toggle then
-                Running = not Running
-                if not Running then CancelLock() end
-            else
-                Running = true
-            end
-        end
-    end)
-    
-    ServiceConnections.InputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
-        local TriggerKey, Toggle = Settings.TriggerKey, Settings.Toggle
-        if Toggle or Typing then return end
-        
-        if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode == TriggerKey or Input.UserInputType == TriggerKey then
-            Running = false
-            CancelLock()
-        end
-    end)
-end
-
--- Typing Check
-UserInputService.TextBoxFocused:Connect(function() Typing = true end)
-UserInputService.TextBoxFocusReleased:Connect(function() Typing = false end)
-
--- Helper Functions
+-- Helpers
 local function getParts(char)
     local head = char:FindFirstChild("Head")
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    return head, root, humanoid
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    return head, root, hum
 end
 
-local function isValid(player)
-    if player == LocalPlayer or not player.Character then return false end
-    local head, root, h = getParts(player.Character)
-    if not head or not root or not h or h.Health <= 0 then return false end
-    if TeamCheckEnabled and player.Team and LocalPlayer.Team then
-        if player.Team == LocalPlayer.Team then return false end
+local function isValid(pl)
+    if pl==Players.LocalPlayer or not pl.Character then return false end
+    local head, root, hum = getParts(pl.Character)
+    if not head or not hum or hum.Health<=0 then return false end
+    if Env.Settings.TeamCheck and pl.Team==Players.LocalPlayer.Team then return false end
+    if Env.Settings.WallCheck then
+        local pts = Workspace.CurrentCamera:GetPartsObscuringTarget({head.Position}, {Workspace.LocalPlayer and Workspace.LocalPlayer.Character})
+        if #pts>0 then return false end
     end
     return true
 end
 
--- GUI Tabs
-local Main = Window:CreateTab("Main", 4483362458)
-local Settings = Window:CreateTab("Settings", 4483362458)
-local Bypass = Window:CreateTab("Bypass", 6031091006)
-
--- Main: Aimbot Toggle
-Main:CreateToggle({ Name="Aimbot", CurrentValue=false, Flag="AimToggle", Callback=function(val)
-    Environment.Settings.Enabled = val
-    if val then
-        LoadAimbot()
-        Rayfield:Notify({Title="Aimbot", Content="Enabled (Exunys Core)", Duration=3})
-    else
-        for _, conn in pairs(ServiceConnections) do
-            if conn then conn:Disconnect() end
-        end
-        ServiceConnections = {}
-        CancelLock()
-        Rayfield:Notify({Title="Aimbot", Content="Disabled", Duration=3})
-    end
-end})
-
--- Main: Advanced Settings
-Main:CreateSlider({ Name="FOV Size", Range={50,500}, Increment=10, Suffix="px", CurrentValue=Environment.FOVSettings.Radius, Flag="FOVSlider", Callback=function(v) Environment.FOVSettings.Radius = v end })
-Main:CreateSlider({ Name="Smoothness", Range={0,1}, Increment=0.01, CurrentValue=Environment.Settings.Sensitivity, Flag="SmoothSlider", Callback=function(v) Environment.Settings.Sensitivity = v end })
-Main:CreateSlider({ Name="Mouse Sensitivity", Range={0.1,10}, Increment=0.1, CurrentValue=Environment.Settings.Sensitivity2, Flag="MouseSensSlider", Callback=function(v) Environment.Settings.Sensitivity2 = v end })
-
-Main:CreateDropdown({ Name="Lock Mode", Options={"CFrame", "MouseMoveRel"}, CurrentOption="CFrame", Flag="LockModeDropdown", Callback=function(v) Environment.Settings.LockMode = v == "CFrame" and 1 or 2 end })
-Main:CreateDropdown({ Name="Target Part", Options={"Head", "Torso", "HumanoidRootPart"}, CurrentOption="Head", Flag="TargetPartDropdown", Callback=function(v) Environment.Settings.LockPart = v end })
-
-Main:CreateToggle({ Name="FOV Circle", CurrentValue=true, Flag="FOVCircleToggle", Callback=function(v) Environment.FOVSettings.Visible = v end })
-Main:CreateToggle({ Name="Rainbow FOV", CurrentValue=false, Flag="RainbowFOVToggle", Callback=function(v) Environment.FOVSettings.RainbowColor = v end })
-
--- Main: No Recoil
-Main:CreateToggle({ Name="No Recoil", CurrentValue=false, Flag="RecoilToggle", Callback=function(val)
-    if val then
-        pcall(function()
-            for _,fn in pairs(getgc(true)) do
-                if type(fn)=="function" then
-                    local info = debug.getinfo(fn)
-                    if info and info.name then
-                        local name = info.name:lower()
-                        if name:find("recoil") or name:find("spread") or name:find("sway") then
-                            hookfunction(fn, function() return end)
-                        end
-                    end
+-- Skeleton ESP
+local function updateSkeleton(pl)
+    if not Env.Skel[pl] then Env.Skel[pl]={} end
+    local char=pl.Character
+    local joints={"Head","HumanoidRootPart","LeftUpperArm","RightUpperArm","LeftUpperLeg","RightUpperLeg"}
+    for _,name in ipairs(joints) do
+        local part=char:FindFirstChild(name)
+        if part then
+            local screenPos, on = Workspace.CurrentCamera:WorldToViewportPoint(part.Position)
+            if on then
+                local vec=Vector2.new(screenPos.X,screenPos.Y)
+                if not Env.Skel[pl][name] then
+                    local line=Drawing.new("Line"); line.Transparency=1; line.Thickness=2; line.Color=Env.Settings.TeamCheck and Color3.new(1,0,0) or Color3.new(0,1,0)
+                    Env.Skel[pl][name]=line
                 end
+                Env.Skel[pl][name].From=vec; Env.Skel[pl][name].To=vec+Vector2.new(0,10) -- placeholder connection
+                Env.Skel[pl][name].Visible=true
             end
-        end)
-        Rayfield:Notify({Title="NoRecoil", Content="Enabled", Duration=3})
-    else
-        Rayfield:Notify({Title="NoRecoil", Content="Disabled", Duration=3})
-    end
-end})
-
--- Settings: Advanced Options
-Settings:CreateToggle({ Name="Team Check", CurrentValue=false, Flag="TeamToggle", Callback=function(v) 
-    Environment.Settings.TeamCheck = v
-    TeamCheckEnabled = v
-end })
-
-Settings:CreateToggle({ Name="Wall Check", CurrentValue=false, Flag="WallToggle", Callback=function(v) Environment.Settings.WallCheck = v end })
-Settings:CreateToggle({ Name="Alive Check", CurrentValue=true, Flag="AliveToggle", Callback=function(v) Environment.Settings.AliveCheck = v end })
-Settings:CreateToggle({ Name="Movement Prediction", CurrentValue=false, Flag="PredictionToggle", Callback=function(v) Environment.Settings.OffsetToMoveDirection = v end })
-
-Settings:CreateSlider({ Name="Prediction Strength", Range={1,30}, Increment=1, CurrentValue=Environment.Settings.OffsetIncrement, Flag="PredictionStrengthSlider", Callback=function(v) Environment.Settings.OffsetIncrement = v end })
-
-Settings:CreateColorPicker({ Name="FOV Color", Color=Environment.FOVSettings.Color, Flag="FOVColorPicker", Callback=function(c) Environment.FOVSettings.Color = c end })
-Settings:CreateColorPicker({ Name="Locked Color", Color=Environment.FOVSettings.LockedColor, Flag="LockedColorPicker", Callback=function(c) Environment.FOVSettings.LockedColor = c end })
-
--- Settings: ESP
-Settings:CreateToggle({ Name="ESP", CurrentValue=false, Flag="ESPToggle", Callback=function(v)
-    ESPEnabled = v
-    if ESPConn then ESPConn:Disconnect() end
-    
-    for p,h in pairs(Marked) do 
-        if h and h.Parent then h:Destroy() end
-        Marked[p] = nil 
-    end
-    
-    if ESPEnabled then
-        ESPConn = RunService.Heartbeat:Connect(function()
-            for _,p in pairs(Players:GetPlayers()) do
-                if isValid(p) then
-                    if not Marked[p] or not Marked[p].Parent then
-                        local h = Instance.new("Highlight")
-                        h.Adornee = p.Character
-                        h.FillColor = ESPColor
-                        h.OutlineColor = Color3.fromRGB(255,255,255)
-                        h.FillTransparency = 0.4
-                        h.OutlineTransparency = 0
-                        h.Parent = p.Character
-                        Marked[p] = h
-                    else
-                        if Marked[p] then
-                            Marked[p].FillColor = ESPColor
-                        end
-                    end
-                elseif Marked[p] then
-                    if Marked[p].Parent then Marked[p]:Destroy() end
-                    Marked[p] = nil
-                end
-            end
-        end)
-    end
-end})
-
-Settings:CreateColorPicker({ Name="ESP Color", Color=ESPColor, Flag="ESPColorPicker", Callback=function(c) ESPColor = c end })
-
--- Bypass Tab
-Bypass:CreateButton({ Name="Speed Hack", Callback=function()
-    pcall(function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 50
-            Rayfield:Notify({Title="Speed", Content="Set to 50", Duration=3})
         end
-    end)
-end})
-
-Bypass:CreateButton({ Name="Jump Hack", Callback=function()
-    pcall(function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            LocalPlayer.Character.Humanoid.JumpPower = 100
-            Rayfield:Notify({Title="Jump", Content="Set to 100", Duration=3})
-        end
-    end)
-end})
-
--- Cleanup
-Players.PlayerRemoving:Connect(function(player)
-    if Marked[player] then
-        Marked[player]:Destroy()
-        Marked[player] = nil
     end
-end)
-
--- Exit Function
-Environment.Exit = function(self)
-    for _, conn in pairs(ServiceConnections) do
-        if conn then conn:Disconnect() end
-    end
-    
-    if ESPConn then ESPConn:Disconnect() end
-    for p,h in pairs(Marked) do 
-        if h and h.Parent then h:Destroy() end
-    end
-    
-    self.FOVCircle:Remove()
-    self.FOVCircleOutline:Remove()
-    getgenv().ExunysDeveloperAimbot = nil
 end
 
-print("ZnfPro GUI loaded with Exunys Aimbot integration!")
+-- Silent Aim: adjust bullet origin
+local function performSilent(target)
+    if Env.Settings.SilentAim and target then
+        -- Teleport camera invisibly
+        local cam=Workspace.CurrentCamera
+        local old=cam.CFrame
+        cam.CFrame=CFrame.new(old.Position, target.Position)
+        task.wait(0)
+        cam.CFrame=old
+    end
+end
+
+-- Find closest
+function Env:GetClosest()
+    local best, dist= nil, math.huge
+    local cam=Workspace.CurrentCamera
+    local mpos=UserInput:GetMouseLocation()
+    for _,pl in pairs(Players:GetPlayers()) do
+        if isValid(pl) then
+            local head=pl.Character:FindFirstChild(Env.Settings.LockPart)
+            if head then
+                local v3, on=cam:WorldToViewportPoint(head.Position)
+                if on and v3.Z>0 then
+                    local v2=Vector2.new(v3.X,v3.Y)
+                    local d=(v2-mpos).Magnitude
+                    if d<dist and d<=Env.Settings.FOV then best,dist=pl,d end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- Start Aimbot
+function Env:Start()
+    OrigSens=UserInput.MouseDeltaSensitivity
+    Conn.Render=RunService.RenderStepped:Connect(function()
+        -- draw FOV
+        if Env.Settings.Enabled then
+            fovC.Visible=true; fovC.Position=UserInput:GetMouseLocation(); fovC.Radius=Env.Settings.FOV; fovC.Color=Color3.fromRGB(255,255,255)
+        else fovC.Visible=false end
+        -- skeleton ESP
+        for _,pl in pairs(Players:GetPlayers()) do if isValid(pl) then updateSkeleton(pl) else Env.Skel[pl]=nil end end
+        -- aimbot
+        if Env.Settings.Enabled then
+            if not Locked then Locked=Env:GetClosest() end
+            if Locked and Locked.Character then
+                local head=Locked.Character:FindFirstChild(Env.Settings.LockPart)
+                if head then
+                    local target=head.Position
+                    Workspace.CurrentCamera.CFrame=Workspace.CurrentCamera.CFrame:Lerp(CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position,target),Env.Settings.Smooth)
+                end
+            end
+        end
+    end)
+    Conn.Began=UserInput.InputBegan:Connect(function(i,g)
+        if g then return end
+        if i.UserInputType==Env.Settings.Trigger or i.KeyCode==Env.Settings.Trigger then
+            if Env.Settings.Toggle then Env.Settings.Enabled=not Env.Settings.Enabled; if not Env.Settings.Enabled then Env:Cancel() end
+            else Env.Settings.Enabled=true end
+        elseif i.UserInputType==Enum.UserInputType.MouseButton1 then
+            performSilent(Locked and Locked.Character:FindFirstChild(Env.Settings.LockPart))
+        end
+    end)
+    Conn.Ended=UserInput.InputEnded:Connect(function(i)
+        if Env.Settings.Toggle then return end
+        if i.UserInputType==Env.Settings.Trigger or i.KeyCode==Env.Settings.Trigger then Env.Settings.Enabled=false; Env:Cancel() end
+    end)
+end
+
+function Env:Cancel()
+    Locked=nil; if OrigSens then pcall(function() UserInput.MouseDeltaSensitivity=OrigSens end) end
+    if fovC then fovC.Visible=false end
+    for pl,tbl in pairs(Env.Skel) do for _,line in pairs(tbl) do line:Remove() end end; Env.Skel={}
+    for _,c in pairs(Conn) do if c then c:Disconnect() end end; Conn={}
+end
+
+-- GUI Tabs
+local Main=Window:CreateTab("Main",4483362458)
+Main:CreateToggle({Name="Aimbot",CurrentValue=false,Flag="AimToggle",Callback=function(v) Env.Settings.Enabled=v if v then Env:Start() Rayfield:Notify({Title="Aimbot",Content="On",Duration=2}) else Env:Cancel() Rayfield:Notify({Title="Aimbot",Content="Off",Duration=2}) end end})
+Main:CreateSlider({Name="FOV",Range={50,500},Increment=10,CurrentValue=Env.Settings.FOV,Flag="FOVSlider",Callback=function(v) Env.Settings.FOV=v end})
+Main:CreateSlider({Name="Smoothness",Range={0,1},Increment=0.01,CurrentValue=Env.Settings.Smooth,Flag="SmoothSlider",Callback=function(v) Env.Settings.Smooth=v end})
+Main:CreateDropdown({Name="LockPart",Options={"Head","HumanoidRootPart"},CurrentOption="Head",Flag="PartDropdown",Callback=function(v) Env.Settings.LockPart=v end})
+
+local SettingsTab=Window:CreateTab("Settings",4483362458)
+SettingsTab:CreateToggle({Name="TeamCheck",CurrentValue=false,Flag="TeamToggle",Callback=function(v) Env.Settings.TeamCheck=v end})
+SettingsTab:CreateToggle({Name="WallCheck",CurrentValue=false,Flag="WallToggle",Callback=function(v) Env.Settings.WallCheck=v end})
+SettingsTab:CreateToggle({Name="AliveCheck",CurrentValue=true,Flag="AliveToggle",Callback=function(v) Env.Settings.AliveCheck=v end})
+SettingsTab:CreateToggle({Name="ToggleMode",CurrentValue=false,Flag="ToggleToggle",Callback=function(v) Env.Settings.Toggle=v end})
+SettingsTab:CreateToggle({Name="SilentAim",CurrentValue=false,Flag="SilentToggle",Callback=function(v) Env.Settings.SilentAim=v end})
+
+local Bypass=Window:CreateTab("Bypass",6031091006)
+Bypass:CreateButton({Name="SpeedHack",Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.Humanoid.WalkSpeed=50 end end})
+Bypass:CreateButton({Name="JumpHack",Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.JumpPower=100 end end})
+
+print("ZnfPro GUI fully integrated with Exunys V3 features!")
