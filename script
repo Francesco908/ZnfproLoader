@@ -1,4 +1,4 @@
--- ZnfPro Universal Gaming Utility - Full Integration with Exunys V3 Features
+-- ZnfPro Universal Gaming Utility - Final Fix with Original ESP
 local success, Rayfield = pcall(function()
     return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
@@ -29,10 +29,15 @@ Env.Settings = Env.Settings or {
     Trigger=Enum.UserInputType.MouseButton2, Toggle=false,
     SilentAim=false
 }
--- skeleton ESP storage
-Env.Skel = Env.Skel or {}
--- FOV circle
-local fovC = Drawing.new("Circle"); fovC.Visible=false fovC.Filled=false fovC.Transparency=1 fovC.Thickness=1 fovC.NumSides=64
+-- original ESP storage
+Env.ESP = Env.ESP or {}
+
+-- FOV Circle
+do
+    local fovC = Drawing.new("Circle")
+    fovC.Visible=false; fovC.Filled=false; fovC.Transparency=1; fovC.Thickness=1; fovC.NumSides=64
+    Env.FOVCircle = fovC
+end
 
 local Conn = {}
 local Locked, OrigSens
@@ -51,60 +56,66 @@ local function isValid(pl)
     if not head or not hum or hum.Health<=0 then return false end
     if Env.Settings.TeamCheck and pl.Team==Players.LocalPlayer.Team then return false end
     if Env.Settings.WallCheck then
-        local pts = Workspace.CurrentCamera:GetPartsObscuringTarget({head.Position}, {Workspace.LocalPlayer and Workspace.LocalPlayer.Character})
+        local pts = Workspace.CurrentCamera:GetPartsObscuringTarget({head.Position}, {Players.LocalPlayer.Character})
         if #pts>0 then return false end
     end
     return true
 end
 
--- Skeleton ESP
-local function updateSkeleton(pl)
-    if not Env.Skel[pl] then Env.Skel[pl]={} end
-    local char=pl.Character
-    local joints={"Head","HumanoidRootPart","LeftUpperArm","RightUpperArm","LeftUpperLeg","RightUpperLeg"}
-    for _,name in ipairs(joints) do
-        local part=char:FindFirstChild(name)
-        if part then
-            local screenPos, on = Workspace.CurrentCamera:WorldToViewportPoint(part.Position)
-            if on then
-                local vec=Vector2.new(screenPos.X,screenPos.Y)
-                if not Env.Skel[pl][name] then
-                    local line=Drawing.new("Line"); line.Transparency=1; line.Thickness=2; line.Color=Env.Settings.TeamCheck and Color3.new(1,0,0) or Color3.new(0,1,0)
-                    Env.Skel[pl][name]=line
-                end
-                Env.Skel[pl][name].From=vec; Env.Skel[pl][name].To=vec+Vector2.new(0,10) -- placeholder connection
-                Env.Skel[pl][name].Visible=true
-            end
-        end
-    end
+-- Original ESP: highlight + name
+local function applyESP(pl)
+    if not pl.Character then return end
+    if Env.ESP[pl] then return end
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ZnfProESP"
+    highlight.FillColor = Color3.fromRGB(255,0,0)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = Color3.fromRGB(255,255,255)
+    highlight.OutlineTransparency = 0
+    highlight.Adornee = pl.Character
+    highlight.Parent = pl.Character
+
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "ZnfProName"
+    bgui.Adornee = pl.Character:FindFirstChild("Head")
+    bgui.Size = UDim2.new(0,100,0,30)
+    bgui.StudsOffset = Vector3.new(0,2,0)
+    bgui.Parent = pl.Character
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Text = pl.Name
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSansBold
+    label.Parent = bgui
+
+    Env.ESP[pl] = {highlight=highlight, gui=bgui}
 end
 
--- Silent Aim: adjust bullet origin
-local function performSilent(target)
-    if Env.Settings.SilentAim and target then
-        -- Teleport camera invisibly
-        local cam=Workspace.CurrentCamera
-        local old=cam.CFrame
-        cam.CFrame=CFrame.new(old.Position, target.Position)
-        task.wait(0)
-        cam.CFrame=old
+local function removeESP(pl)
+    if Env.ESP[pl] then
+        local data = Env.ESP[pl]
+        if data.highlight then data.highlight:Destroy() end
+        if data.gui then data.gui:Destroy() end
+        Env.ESP[pl] = nil
     end
 end
 
 -- Find closest
 function Env:GetClosest()
-    local best, dist= nil, math.huge
-    local cam=Workspace.CurrentCamera
-    local mpos=UserInput:GetMouseLocation()
+    local best, dist = nil, math.huge
+    local cam = Workspace.CurrentCamera
+    local mpos = UserInput:GetMouseLocation()
     for _,pl in pairs(Players:GetPlayers()) do
         if isValid(pl) then
-            local head=pl.Character:FindFirstChild(Env.Settings.LockPart)
+            local head = pl.Character:FindFirstChild(Env.Settings.LockPart)
             if head then
-                local v3, on=cam:WorldToViewportPoint(head.Position)
+                local v3, on = cam:WorldToViewportPoint(head.Position)
                 if on and v3.Z>0 then
-                    local v2=Vector2.new(v3.X,v3.Y)
-                    local d=(v2-mpos).Magnitude
-                    if d<dist and d<=Env.Settings.FOV then best,dist=pl,d end
+                    local v2 = Vector2.new(v3.X, v3.Y)
+                    local d = (v2 - mpos).Magnitude
+                    if d < dist and d <= Env.Settings.FOV then best, dist = pl, d end
                 end
             end
         end
@@ -114,64 +125,70 @@ end
 
 -- Start Aimbot
 function Env:Start()
-    OrigSens=UserInput.MouseDeltaSensitivity
-    Conn.Render=RunService.RenderStepped:Connect(function()
-        -- draw FOV
+    OrigSens = UserInput.MouseDeltaSensitivity
+    Conn.Render = RunService.RenderStepped:Connect(function()
+        -- FOV circle
+        local fov = Env.FOVCircle
         if Env.Settings.Enabled then
-            fovC.Visible=true; fovC.Position=UserInput:GetMouseLocation(); fovC.Radius=Env.Settings.FOV; fovC.Color=Color3.fromRGB(255,255,255)
-        else fovC.Visible=false end
-        -- skeleton ESP
-        for _,pl in pairs(Players:GetPlayers()) do if isValid(pl) then updateSkeleton(pl) else Env.Skel[pl]=nil end end
+            fov.Visible = true
+            fov.Position = UserInput:GetMouseLocation()
+            fov.Radius = Env.Settings.FOV
+            fov.Color = Color3.fromRGB(255,255,255)
+        else fov.Visible = false end
+        -- ESP
+        for _,pl in pairs(Players:GetPlayers()) do
+            if Env.Settings.Enabled and isValid(pl) then applyESP(pl) else removeESP(pl) end
+        end
         -- aimbot
         if Env.Settings.Enabled then
-            if not Locked then Locked=Env:GetClosest() end
+            if not Locked then Locked = Env:GetClosest() end
             if Locked and Locked.Character then
-                local head=Locked.Character:FindFirstChild(Env.Settings.LockPart)
+                local head = Locked.Character:FindFirstChild(Env.Settings.LockPart)
                 if head then
-                    local target=head.Position
-                    Workspace.CurrentCamera.CFrame=Workspace.CurrentCamera.CFrame:Lerp(CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position,target),Env.Settings.Smooth)
+                    Workspace.CurrentCamera.CFrame = Workspace.CurrentCamera.CFrame:Lerp(CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position, head.Position), Env.Settings.Smooth)
                 end
             end
         end
     end)
-    Conn.Began=UserInput.InputBegan:Connect(function(i,g)
+    Conn.Began = UserInput.InputBegan:Connect(function(i,g)
         if g then return end
         if i.UserInputType==Env.Settings.Trigger or i.KeyCode==Env.Settings.Trigger then
-            if Env.Settings.Toggle then Env.Settings.Enabled=not Env.Settings.Enabled; if not Env.Settings.Enabled then Env:Cancel() end
-            else Env.Settings.Enabled=true end
-        elseif i.UserInputType==Enum.UserInputType.MouseButton1 then
-            performSilent(Locked and Locked.Character:FindFirstChild(Env.Settings.LockPart))
+            if Env.Settings.Toggle then Env.Settings.Enabled = not Env.Settings.Enabled; if not Env.Settings.Enabled then Env:Cancel() end
+            else Env.Settings.Enabled = true end
         end
     end)
-    Conn.Ended=UserInput.InputEnded:Connect(function(i)
+    Conn.Ended = UserInput.InputEnded:Connect(function(i)
         if Env.Settings.Toggle then return end
-        if i.UserInputType==Env.Settings.Trigger or i.KeyCode==Env.Settings.Trigger then Env.Settings.Enabled=false; Env:Cancel() end
+        if i.UserInputType==Env.Settings.Trigger or i.KeyCode==Env.Settings.Trigger then Env.Settings.Enabled = false; Env:Cancel() end
     end)
 end
 
 function Env:Cancel()
-    Locked=nil; if OrigSens then pcall(function() UserInput.MouseDeltaSensitivity=OrigSens end) end
-    if fovC then fovC.Visible=false end
-    for pl,tbl in pairs(Env.Skel) do for _,line in pairs(tbl) do line:Remove() end end; Env.Skel={}
-    for _,c in pairs(Conn) do if c then c:Disconnect() end end; Conn={}
+    Locked = nil
+    if OrigSens then pcall(function() UserInput.MouseDeltaSensitivity = OrigSens end) end
+    -- remove all ESP
+    for pl,_ in pairs(Env.ESP) do removeESP(pl) end
+    -- disconnect
+    for _,c in pairs(Conn) do if c then c:Disconnect() end end; Conn = {}
+    -- hide FOV
+    if Env.FOVCircle then Env.FOVCircle.Visible = false end
 end
 
 -- GUI Tabs
-local Main=Window:CreateTab("Main",4483362458)
-Main:CreateToggle({Name="Aimbot",CurrentValue=false,Flag="AimToggle",Callback=function(v) Env.Settings.Enabled=v if v then Env:Start() Rayfield:Notify({Title="Aimbot",Content="On",Duration=2}) else Env:Cancel() Rayfield:Notify({Title="Aimbot",Content="Off",Duration=2}) end end})
-Main:CreateSlider({Name="FOV",Range={50,500},Increment=10,CurrentValue=Env.Settings.FOV,Flag="FOVSlider",Callback=function(v) Env.Settings.FOV=v end})
-Main:CreateSlider({Name="Smoothness",Range={0,1},Increment=0.01,CurrentValue=Env.Settings.Smooth,Flag="SmoothSlider",Callback=function(v) Env.Settings.Smooth=v end})
-Main:CreateDropdown({Name="LockPart",Options={"Head","HumanoidRootPart"},CurrentOption="Head",Flag="PartDropdown",Callback=function(v) Env.Settings.LockPart=v end})
+local Main = Window:CreateTab("Main", 4483362458)
+Main:CreateToggle({ Name="Aimbot", CurrentValue=false, Flag="AimToggle", Callback=function(v) Env.Settings.Enabled = v if v then Env:Start() Rayfield:Notify({Title="Aimbot",Content="On",Duration=2}) else Env:Cancel() Rayfield:Notify({Title="Aimbot",Content="Off",Duration=2}) end end })
+Main:CreateSlider({ Name="FOV", Range={50,500}, Increment=10, CurrentValue=Env.Settings.FOV, Flag="FOVSlider", Callback=function(v) Env.Settings.FOV = v end })
+Main:CreateSlider({ Name="Smoothness", Range={0,1}, Increment=0.01, CurrentValue=Env.Settings.Smooth, Flag="SmoothSlider", Callback=function(v) Env.Settings.Smooth = v end })
+Main:CreateDropdown({ Name="LockPart", Options={"Head","HumanoidRootPart"}, CurrentOption="Head", Flag="PartDropdown", Callback=function(v) Env.Settings.LockPart = v end })
 
-local SettingsTab=Window:CreateTab("Settings",4483362458)
-SettingsTab:CreateToggle({Name="TeamCheck",CurrentValue=false,Flag="TeamToggle",Callback=function(v) Env.Settings.TeamCheck=v end})
-SettingsTab:CreateToggle({Name="WallCheck",CurrentValue=false,Flag="WallToggle",Callback=function(v) Env.Settings.WallCheck=v end})
-SettingsTab:CreateToggle({Name="AliveCheck",CurrentValue=true,Flag="AliveToggle",Callback=function(v) Env.Settings.AliveCheck=v end})
-SettingsTab:CreateToggle({Name="ToggleMode",CurrentValue=false,Flag="ToggleToggle",Callback=function(v) Env.Settings.Toggle=v end})
-SettingsTab:CreateToggle({Name="SilentAim",CurrentValue=false,Flag="SilentToggle",Callback=function(v) Env.Settings.SilentAim=v end})
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+SettingsTab:CreateToggle({ Name="TeamCheck", CurrentValue=false, Flag="TeamToggle", Callback=function(v) Env.Settings.TeamCheck = v end })
+SettingsTab:CreateToggle({ Name="WallCheck", CurrentValue=false, Flag="WallToggle", Callback=function(v) Env.Settings.WallCheck = v end })
+SettingsTab:CreateToggle({ Name="AliveCheck", CurrentValue=true, Flag="AliveToggle", Callback=function(v) Env.Settings.AliveCheck = v end })
+SettingsTab:CreateToggle({ Name="ToggleMode", CurrentValue=false, Flag="ToggleToggle", Callback=function(v) Env.Settings.Toggle = v end })
 
-local Bypass=Window:CreateTab("Bypass",6031091006)
-Bypass:CreateButton({Name="SpeedHack",Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.Humanoid.WalkSpeed=50 end end})
-Bypass:CreateButton({Name="JumpHack",Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.JumpPower=100 end end})
+local Bypass = Window:CreateTab("Bypass", 6031091006)
+Bypass:CreateButton({ Name="SpeedHack", Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.Humanoid.WalkSpeed = 50 end end })
+Bypass:CreateButton({ Name="JumpHack", Callback=function() if Players.LocalPlayer.Character then Players.LocalPlayer.Character.JumpPower = 100 end end })
 
-print("ZnfPro GUI fully integrated with Exunys V3 features!")
+print("ZnfPro GUI final version with original ESP!")
