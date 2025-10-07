@@ -1,1 +1,207 @@
-loadstring(game("https://raw.githubusercontent.com/Francesco908/ZnfproLoader/refs/heads/main/script"))()
+-- Services
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Config
+local PLACE_ID = 109983668079237
+
+-- Colors Theme
+local Theme = {
+    Background = Color3.fromRGB(25, 25, 30),
+    Secondary = Color3.fromRGB(35, 35, 42),
+    Accent = Color3.fromRGB(88, 101, 242),
+    Success = Color3.fromRGB(87, 242, 135),
+    Danger = Color3.fromRGB(237, 66, 69),
+    Text = Color3.fromRGB(255, 255, 255)
+}
+
+-- Create GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DupeHub"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Smooth tween function
+local function smoothTween(object, properties, duration)
+    local tween = TweenService:Create(object, TweenInfo.new(duration or 0.3, Enum.EasingStyle.Quart), properties)
+    tween:Play()
+    return tween
+end
+
+-- Shadow effect
+local function addShadow(frame)
+    local shadow = Instance.new("ImageLabel")
+    shadow.Name = "Shadow"
+    shadow.BackgroundTransparency = 1
+    shadow.Position = UDim2.new(0, -15, 0, -15)
+    shadow.Size = UDim2.new(1, 30, 1, 30)
+    shadow.Image = "rbxassetid://1316045217"
+    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.ImageTransparency = 0.6
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    shadow.Parent = frame
+    shadow.ZIndex = frame.ZIndex - 1
+end
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 280, 0, 160)
+mainFrame.Position = UDim2.new(0.5, -140, 0.5, -80)
+mainFrame.BackgroundColor3 = Theme.Background
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+-- Background Image
+local mainBg = Instance.new("ImageLabel")
+mainBg.Size = UDim2.new(1, 0, 1, 0)
+mainBg.BackgroundTransparency = 1
+mainBg.Image = "rbxassetid://6675147490"
+mainBg.ImageTransparency = 0.8
+mainBg.Parent = mainFrame
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 14)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Theme.Accent
+mainStroke.Thickness = 2
+mainStroke.Transparency = 0.5
+mainStroke.Parent = mainFrame
+
+addShadow(mainFrame)
+
+-- Title Bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 35)
+titleBar.BackgroundColor3 = Theme.Secondary
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 14)
+titleCorner.Parent = titleBar
+
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0, 15)
+titleFix.Position = UDim2.new(0, 0, 0.5, 0)
+titleFix.BackgroundColor3 = Theme.Secondary
+titleFix.BorderSizePixel = 0
+titleFix.Parent = titleBar
+
+-- Title Text
+local titleText = Instance.new("TextLabel")
+titleText.Text = "◊ DUPE ◊"
+titleText.Size = UDim2.new(0.7, 0, 1, 0)
+titleText.Position = UDim2.new(0, 10, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.TextColor3 = Theme.Text
+titleText.Font = Enum.Font.GothamBold
+titleText.TextScaled = true
+titleText.Parent = titleBar
+
+-- Close Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Text = "×"
+closeBtn.Size = UDim2.new(0, 25, 0, 25)
+closeBtn.Position = UDim2.new(1, -30, 0, 5)
+closeBtn.BackgroundColor3 = Theme.Danger
+closeBtn.TextColor3 = Theme.Text
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.Parent = titleBar
+
+local closeBtnCorner = Instance.new("UICorner")
+closeBtnCorner.CornerRadius = UDim.new(0, 6)
+closeBtnCorner.Parent = closeBtn
+
+-- Dupe Button
+local dupeBtn = Instance.new("TextButton")
+dupeBtn.Text = "▸ START DUPE"
+dupeBtn.Size = UDim2.new(0.8, 0, 0, 50)
+dupeBtn.Position = UDim2.new(0.1, 0, 0, 60)
+dupeBtn.BackgroundColor3 = Theme.Accent
+dupeBtn.TextColor3 = Theme.Text
+dupeBtn.Font = Enum.Font.GothamBold
+dupeBtn.TextSize = 18
+dupeBtn.Parent = mainFrame
+
+local dupeBtnCorner = Instance.new("UICorner")
+dupeBtnCorner.CornerRadius = UDim.new(0, 10)
+dupeBtnCorner.Parent = dupeBtn
+
+local dupeBtnStroke = Instance.new("UIStroke")
+dupeBtnStroke.Color = Color3.fromRGB(255, 255, 255)
+dupeBtnStroke.Transparency = 0.8
+dupeBtnStroke.Thickness = 2
+dupeBtnStroke.Parent = dupeBtn
+
+-- Status Label
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Text = "Click to start duping"
+statusLabel.Size = UDim2.new(0.9, 0, 0, 25)
+statusLabel.Position = UDim2.new(0.05, 0, 0, 120)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Theme.Text
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 12
+statusLabel.Parent = mainFrame
+
+-- Hover effect
+local function addHoverEffect(button)
+    local originalColor = button.BackgroundColor3
+    
+    button.MouseEnter:Connect(function()
+        smoothTween(button, {BackgroundColor3 = Theme.Success}, 0.2)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        smoothTween(button, {BackgroundColor3 = originalColor}, 0.2)
+    end)
+end
+
+addHoverEffect(dupeBtn)
+
+-- Close button functionality
+closeBtn.MouseButton1Click:Connect(function()
+    smoothTween(mainFrame, {Size = UDim2.new(0, 0, 0, 0)}, 0.3)
+    wait(0.3)
+    screenGui:Destroy()
+end)
+
+-- Dupe button functionality
+dupeBtn.MouseButton1Click:Connect(function()
+    dupeBtn.Text = "◈ TELEPORTING..."
+    statusLabel.Text = "Please wait..."
+    statusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+    smoothTween(dupeBtn, {BackgroundColor3 = Color3.fromRGB(255, 150, 0)}, 0.3)
+    
+    wait(1)
+    
+    local success, errorMsg = pcall(function()
+        TeleportService:Teleport(PLACE_ID, player)
+    end)
+    
+    if not success then
+        dupeBtn.Text = "✕ FAILED"
+        dupeBtn.BackgroundColor3 = Theme.Danger
+        statusLabel.Text = "Teleport failed: " .. tostring(errorMsg)
+        statusLabel.TextColor3 = Theme.Danger
+        
+        wait(3)
+        dupeBtn.Text = "▸ START DUPE"
+        dupeBtn.BackgroundColor3 = Theme.Accent
+        statusLabel.Text = "Click to start duping"
+        statusLabel.TextColor3 = Theme.Text
+    end
+end)
+
+-- Initial animation
+mainFrame.Size = UDim2.new(0, 0, 0, 0)
+smoothTween(mainFrame, {Size = UDim2.new(0, 280, 0, 160)}, 0.5)
